@@ -1,0 +1,24 @@
+# Python
+*.pyc
+__pycache__/
+.venv/
+env/
+*.log
+
+# Node / frontend
+node_modules/
+dist/
+*.log
+
+# System files
+.DS_Store
+Thumbs.db
+
+# FS42 generated dirs
+catalog/
+confs/
+runtime/
+
+# IDE
+.vscode/
+.idea/
