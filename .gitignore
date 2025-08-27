@@ -22,3 +22,6 @@ runtime/
 # IDE
 .vscode/
 .idea/
+
+# Ignore the FieldStation42 folder entirely
+FieldStation42/
