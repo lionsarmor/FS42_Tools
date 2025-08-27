@@ -2,7 +2,7 @@
 import { defineStore } from "pinia"
 import axios from "axios"
 
-const API = "http://127.0.0.1:4242"
+const API = "http://127.0.0.1:4343"
 
 export const useChannelsStore = defineStore("channels", {
   state: () => ({

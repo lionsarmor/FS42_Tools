@@ -1,18 +1,22 @@
 import os
 import json
 import shutil
+import random
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
-CATALOG_DIR = os.path.join(os.path.dirname(ROOT), "catalog")
-CONF_DIR = os.path.join(os.path.dirname(ROOT), "confs")
+# === Root paths ===
+# This file lives in: /.../FS42-Tsar-Tools/backend/fs42.py
+# PROJECT_ROOT → /.../FS42-Tsar-Tools
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Always use the official FieldStation42 dirs inside FS42-Tsar-Tools
+FS42ROOT = os.path.join(PROJECT_ROOT, "FieldStation42")
+CATALOG_DIR = os.path.join(FS42ROOT, "catalog")
+CONF_DIR    = os.path.join(FS42ROOT, "confs")
 
 os.makedirs(CATALOG_DIR, exist_ok=True)
 os.makedirs(CONF_DIR, exist_ok=True)
 
-
 # ==== Helpers ====
-import random
-
 def generate_conf(ch: dict):
     name = ch["name"]
     path = ch["path"]
@@ -42,7 +46,7 @@ def generate_conf(ch: dict):
         os.makedirs(os.path.join(path, "commercials"), exist_ok=True)
         os.makedirs(os.path.join(path, "bumps"), exist_ok=True)
 
-        # === ✅ Seed random weekly schedule ===
+        # ✅ Seed random weekly schedule with available tags
         available_tags = conf["station_conf"]["tags"]
         days = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]
         for day in days:
@@ -78,11 +82,7 @@ def generate_conf(ch: dict):
         json.dump(conf, f, indent=2)
 
 
-
 def load_all_channels():
-    """
-    Load all channels from confs/ into a dict keyed by channel name.
-    """
     result = {}
     if not os.path.exists(CONF_DIR):
         return result
@@ -103,7 +103,7 @@ def load_all_channels():
         name = data["station_conf"]["network_name"]
         result[name] = {
             "name": name,
-            "path": data["station_conf"].get("content_dir", f"catalog/{name}"),
+            "path": data["station_conf"].get("content_dir", os.path.join(CATALOG_DIR, name)),
             "config": data["station_conf"],  # includes tags + tag_colors
         }
     return result
