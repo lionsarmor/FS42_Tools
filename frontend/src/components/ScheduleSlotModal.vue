@@ -4,42 +4,48 @@
       <h3 class="text-lg font-semibold mb-4">
         Edit {{ day }} @ {{ hour }}h
       </h3>
-
       <!-- Tags -->
       <div class="mb-3">
-        <label class="block text-sm font-medium">Tags (comma separated)</label>
-        <input v-model="tagsInput" type="text"
-               class="mt-1 p-2 w-full rounded bg-brand-bg border border-brand-muted text-brand-text"/>
+        <label class="block text-sm font-medium">Tags</label>
+        <select v-model="form.tags" multiple
+                class="mt-1 p-2 w-full rounded bg-brand-bg border border-brand-muted text-brand-text h-28">
+          <option v-for="tag in tags" :key="tag" :value="tag">{{ tag }}</option>
+          <option value="off_air">Off-Air</option>
+          <option value="signoff">Sign-Off</option>
+        </select>
+        <div class="flex flex-wrap mt-2 gap-1">
+          <span v-for="tag in form.tags" :key="tag"
+                class="px-2 py-1 rounded text-xs font-medium"
+                :style="{ backgroundColor: isValidColor(tagColors?.[tag]) ? tagColors[tag] : '#666666' }">
+            {{ tag }}
+          </span>
+        </div>
       </div>
 
-      <!-- Event -->
+      <!-- Start Bump -->
       <div class="mb-3">
-        <label class="block text-sm font-medium">Event</label>
-        <select v-model="form.event"
+        <label class="block text-sm font-medium">Start Bump</label>
+        <select v-model="form.start_bump"
                 class="mt-1 p-2 w-full rounded bg-brand-bg border border-brand-muted text-brand-text">
           <option value="">None</option>
-          <option value="signoff">Signoff</option>
+          <option v-for="f in bumpFiles" :key="f" :value="f">{{ f }}</option>
         </select>
       </div>
 
-      <!-- Start / End bump -->
+      <!-- End Bump -->
       <div class="mb-3">
-        <label class="block text-sm font-medium">Start Bump Path</label>
-        <input v-model="form.start_bump" type="text"
-               placeholder="caps/sb.mp4"
-               class="mt-1 p-2 w-full rounded bg-brand-bg border border-brand-muted text-brand-text"/>
-      </div>
-      <div class="mb-3">
-        <label class="block text-sm font-medium">End Bump Path</label>
-        <input v-model="form.end_bump" type="text"
-               placeholder="caps/eb.mp4"
-               class="mt-1 p-2 w-full rounded bg-brand-bg border border-brand-muted text-brand-text"/>
+        <label class="block text-sm font-medium">End Bump</label>
+        <select v-model="form.end_bump"
+                class="mt-1 p-2 w-full rounded bg-brand-bg border border-brand-muted text-brand-text">
+          <option value="">None</option>
+          <option v-for="f in bumpFiles" :key="f" :value="f">{{ f }}</option>
+        </select>
       </div>
 
       <!-- Actions -->
       <div class="mt-6 flex justify-end space-x-2">
         <button @click="$emit('close')"
-                class="px-3 py-2 rounded bg-gray-700 hover:bg-gray-600">
+                class="px-3 py-2 rounded bg-brand-muted hover:bg-brand-accent text-brand-text">
           Cancel
         </button>
         <button @click="save"
@@ -52,42 +58,51 @@
 </template>
 
 <script setup>
-import { reactive, computed } from "vue"
+import { reactive, onMounted, ref } from "vue"
+import axios from "axios"
 import { useChannelsStore } from "../store/channels"
 
 const props = defineProps({
-  channelName: String,
   day: String,
   hour: Number,
-  slot: { type: Object, default: () => ({}) }
+  channel: String,
+  tags: Array,
+  tagColors: Object,
+  slot: Object
 })
-const emit = defineEmits(["close"])
+const emit = defineEmits(["close", "saved"])
 const store = useChannelsStore()
 
-// Local form
+// form state
 const form = reactive({
-  tags: props.slot.tags || [],
-  event: props.slot.event || "",
-  start_bump: props.slot.start_bump || "",
-  end_bump: props.slot.end_bump || "",
+  tags: props.slot?.tags || [],
+  start_bump: props.slot?.start_bump || "",
+  end_bump: props.slot?.end_bump || ""
 })
 
-// Tags input as comma-separated
-const tagsInput = computed({
-  get: () => Array.isArray(form.tags) ? form.tags.join(", ") : form.tags || "",
-  set: (val) => {
-    form.tags = val.split(",").map(t => t.trim()).filter(t => t.length > 0)
+// bump dropdown files
+const bumpFiles = ref([])
+
+function isValidColor(color) {
+  return typeof color === "string" && /^#[0-9A-Fa-f]{6}$/.test(color)
+}
+
+const loadFiles = async () => {
+  try {
+    const res = await axios.get(`/channels/${props.channel}/bump`)
+    bumpFiles.value = Array.isArray(res.data) ? res.data : []
+  } catch (err) {
+    console.warn("Failed to load bump files", err)
+    bumpFiles.value = []
   }
-})
+}
 
 const save = async () => {
-  const slotData = {}
-  if (form.tags && form.tags.length) slotData.tags = form.tags
-  if (form.event) slotData.event = form.event
-  if (form.start_bump) slotData.start_bump = form.start_bump
-  if (form.end_bump) slotData.end_bump = form.end_bump
-
-  await store.patchSlot(props.channelName, props.day, props.hour, slotData)
+  await store.patchSlot(props.channel, props.day, props.hour, { ...form })
+  emit("saved")
   emit("close")
 }
+
+onMounted(loadFiles)
 </script>
+

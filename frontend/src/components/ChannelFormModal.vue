@@ -32,12 +32,19 @@
           </select>
         </div>
 
-        <!-- === Conditional fields === -->
+        <!-- === Standard channel fields === -->
         <div v-if="form.config.network_type === 'standard'" class="space-y-3">
           <div>
             <label class="block text-sm font-medium">Tags (comma separated)</label>
             <input v-model="tagsInput" type="text"
                    class="mt-1 p-2 w-full rounded bg-brand-bg border border-brand-muted text-brand-text"/>
+          </div>
+
+          <!-- Commercial Free -->
+          <div class="flex items-center space-x-2">
+            <input id="commercialFree" type="checkbox" v-model="form.config.commercial_free"
+                  class="h-4 w-4 text-brand-accent border-brand-muted rounded focus:ring-brand-accent">
+            <label for="commercialFree" class="text-sm font-medium">Commercial Free</label>
           </div>
 
           <div>
@@ -50,18 +57,39 @@
             </select>
           </div>
 
-<div class="mb-3">
-  <label class="block text-sm font-medium">Schedule Increment</label>
-  <select v-model.number="form.config.schedule_increment"
-          class="mt-1 p-2 border border-gray-600 bg-gray-900 rounded w-full">
-    <option :value="5">5 minutes</option>
-    <option :value="10">10 minutes</option>
-    <option :value="15">15 minutes</option>
-    <option :value="20">20 minutes</option>
-    <option :value="30">30 minutes (default)</option>
-    <option :value="60">60 minutes</option>
-  </select>
-</div>
+          <!-- Schedule Increment -->
+          <div>
+            <label class="block text-sm font-medium">Schedule Increment</label>
+            <select v-model.number="form.config.schedule_increment"
+                    class="mt-1 p-2 border border-brand-muted bg-brand-bg rounded w-full">
+              <option :value="5">5 minutes</option>
+              <option :value="10">10 minutes</option>
+              <option :value="15">15 minutes</option>
+              <option :value="20">20 minutes</option>
+              <option :value="30">30 minutes (default)</option>
+              <option :value="60">60 minutes</option>
+            </select>
+          </div>
+
+          <!-- Off-Air -->
+          <div>
+            <label class="block text-sm font-medium">Off-Air Path</label>
+            <select v-model="form.config.off_air_path"
+                    class="mt-1 p-2 w-full rounded bg-brand-bg border border-brand-muted text-brand-text">
+              <option disabled value="">-- Select Off-Air File --</option>
+              <option v-for="f in runtimeFiles" :key="f" :value="`runtime/${f}`">{{ f }}</option>
+            </select>
+          </div>
+
+          <!-- Sign-Off -->
+          <div>
+            <label class="block text-sm font-medium">Sign-Off Path</label>
+            <select v-model="form.config.signoff_path"
+                    class="mt-1 p-2 w-full rounded bg-brand-bg border border-brand-muted text-brand-text">
+              <option disabled value="">-- Select Sign-Off File --</option>
+              <option v-for="f in runtimeFiles" :key="f" :value="`runtime/${f}`">{{ f }}</option>
+            </select>
+          </div>
         </div>
 
         <!-- Streaming channel -->
@@ -111,15 +139,16 @@
 </template>
 
 <script setup>
-import { reactive, watch, ref, computed } from "vue"
+import { reactive, watch, ref, computed, onMounted } from "vue"
 import { useChannelsStore } from "../store/channels"
+import axios from "axios"
 
 const props = defineProps({ channel: Object })
 const emit = defineEmits(["close", "saved"])
 const store = useChannelsStore()
 
-// 🆕 keep original name separately
 const originalName = ref(null)
+const runtimeFiles = ref([])
 
 const form = reactive({
   name: "",
@@ -132,6 +161,9 @@ const form = reactive({
     schedule_increment: 30,
     streams: [],
     web_url: "",
+    off_air_path: "",   // ✅ match backend key
+    signoff_path: "",   // ✅ match backend key
+    commercial_free: false
   },
 })
 
@@ -142,38 +174,53 @@ const tagsInput = computed({
   }
 })
 
-watch(
-  () => props.channel,
-  (ch) => {
-    if (ch) {
-      Object.assign(form, JSON.parse(JSON.stringify(ch)))
-      originalName.value = ch.name   // 🆕 snapshot the old name
-    } else {
-      form.name = ""
-      form.path = ""
-      form.config = {
-        tags: [],
-        channel_number: 1,
-        network_type: "standard",
-        break_strategy: "standard",
-        schedule_increment: 30,
-        streams: [],
-        web_url: "",
-      }
-      originalName.value = null
+watch(() => props.channel, (ch) => {
+  if (ch) {
+    Object.assign(form, JSON.parse(JSON.stringify(ch)))
+    if (form.config.commercial_free === undefined) {
+      form.config.commercial_free = false
     }
-  },
-  { immediate: true }
-)
+    if (!form.config.off_air_path) form.config.off_air_path = ""
+    if (!form.config.signoff_path) form.config.signoff_path = ""
+    originalName.value = ch.name
+  } else {
+    form.name = ""
+    form.path = ""
+    form.config = {
+      tags: [],
+      channel_number: 1,
+      network_type: "standard",
+      break_strategy: "standard",
+      schedule_increment: 30,
+      streams: [],
+      web_url: "",
+      off_air_path: "",
+      signoff_path: "",
+      commercial_free: false
+    }
+    originalName.value = null
+  }
+}, { immediate: true })
+
+onMounted(async () => {
+  try {
+    const res = await axios.get("http://127.0.0.1:4343/runtime-files")
+    runtimeFiles.value = res.data.files
+  } catch (err) {
+    console.error("Failed to fetch runtime files", err)
+  }
+})
 
 const save = async () => {
   try {
-    form.path = `/mnt/media01/projects/FS42-Tsar-Tools/catalog/${form.name}`
+    form.path = `${import.meta.env.VITE_FS42_ROOT}/FieldStation42/catalog/${form.name}`
+
     if (props.channel) {
-      await store.updateChannel(originalName.value, form) // ✅ always use the old name
+      await store.updateChannel(originalName.value, form)
     } else {
       await store.addChannel(form)
     }
+
     emit("saved")
     emit("close")
   } catch (err) {
