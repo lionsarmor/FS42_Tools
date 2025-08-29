@@ -20,6 +20,13 @@
                  class="mt-1 p-2 w-full rounded bg-brand-bg border border-brand-muted text-brand-text"/>
         </div>
 
+        <!-- IP Address -->
+        <div class="mb-3">
+          <label class="block text-sm font-medium">Weather Server IP Address</label>
+          <input v-model="form.ip" type="text" placeholder="127.0.0.1" required
+                 class="mt-1 p-2 w-full rounded bg-brand-bg border border-brand-muted text-brand-text"/>
+        </div>
+
         <!-- Location -->
         <div class="mb-3">
           <label class="block text-sm font-medium">Location (City, State, Country)</label>
@@ -90,7 +97,6 @@ import { useChannelsStore } from "../store/channels"
 const emit = defineEmits(["close", "saved"])
 const store = useChannelsStore()
 
-// Options we’ll show as checkboxes
 const toggleOptions = [
   { key: "hazards", label: "Hazards" },
   { key: "current-weather", label: "Current Weather" },
@@ -109,6 +115,7 @@ const toggleOptions = [
 const form = reactive({
   name: "",
   location: "",
+  ip: "127.0.0.1",
   config: {
     channel_number: 1,
     network_type: "web",
@@ -123,17 +130,14 @@ const form = reactive({
   },
 })
 
-// Generate WeatherStar URL from inputs
 const generatedUrl = computed(() => {
-  const base = "http://<IP_ADDRESS>:9090/index.html?"
+  const base = `http://${form.ip}:9090/index.html?`
   const params = []
 
-  // Options toggles
   for (const [key, val] of Object.entries(form.options)) {
     if (val) params.push(`${key}-checkbox=true`)
   }
 
-  // Settings
   params.push(`settings-units-select=${form.settings.units}`)
   params.push(`settings-speed-select=${form.settings.speed}`)
   params.push(`settings-kiosk-checkbox=${form.settings.kiosk}`)
@@ -147,7 +151,6 @@ const generatedUrl = computed(() => {
   return base + params.join("&")
 })
 
-// Save channel
 const save = async () => {
   form.config.web_url = generatedUrl.value
   form.config.network_type = "web"

@@ -22,14 +22,15 @@
           Add Weather
         </button>
 
-        <!-- Add Videos -->
+        <!-- Add Guide Channel -->
         <button
-          @click="openFileManager()"
-          class="flex items-center px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-500"
+          @click="openGuideForm()"
+          class="flex items-center px-3 py-2 bg-brand-accent text-white rounded hover:bg-brand-accentHover"
         >
-          <FolderPlus class="w-4 h-4 mr-1" />
-          Add Videos
+          <BookOpen class="w-4 h-4 mr-1" />
+          Add Guide
         </button>
+
 
         <!-- Launch Scanner -->
         <button
@@ -48,8 +49,19 @@
           <Flame class="w-4 h-4 mr-1" />
           Hot Start
         </button>
+
+            <!-- Kill (Skull button) -->
+    <button
+      @click="killAll"
+      class="flex items-center px-3 py-2 bg-red-700 text-white rounded hover:bg-red-600"
+    >
+      <Skull class="w-4 h-4 mr-1" />
+      Kill
+    </button>
       </div>
     </div>
+
+
 
     <!-- Channel list table -->
     <div class="overflow-x-auto">
@@ -68,13 +80,27 @@
         </thead>
         <tbody>
           <tr
-            v-for="ch in channels"
+            v-for="ch in sortedChannels"
             :key="ch.name"
             class="border-t border-brand-muted"
           >
+            <!-- Channel name -->
             <td class="px-3 py-2 truncate">{{ ch.name }}</td>
-            <td class="px-3 py-2">{{ ch.config.channel_number }}</td>
-            <td class="px-3 py-2 capitalize">{{ ch.config.network_type || "standard" }}</td>
+
+            <!-- Channel number (red + bold if duplicate) -->
+            <td
+              class="px-3 py-2"
+              :class="{
+                'text-red-600 font-bold': duplicateNumbers.has(ch.config.channel_number)
+              }"
+            >
+              {{ ch.config.channel_number }}
+            </td>
+
+            <!-- Type -->
+            <td class="px-3 py-2 capitalize">
+              {{ ch.config.network_type || "standard" }}
+            </td>
 
             <!-- Tags summary -->
             <td class="px-3 py-2 text-xs text-gray-400 leading-tight">
@@ -119,6 +145,15 @@
             <!-- Actions -->
             <td class="px-3 py-2 whitespace-nowrap text-center">
               <div class="flex justify-center space-x-2">
+                <!-- ▶️ Play -->
+                <button
+                  class="w-10 h-10 flex items-center justify-center bg-green-600 text-white rounded hover:bg-green-500"
+                  @click="openPlayer(ch)"
+                  title="Play Channel"
+                >
+                  <PlayCircle class="w-5 h-5" />
+                </button>
+
                 <!-- Edit Config -->
                 <button
                   class="w-10 h-10 flex items-center justify-center bg-blue-600 text-white rounded hover:bg-blue-500"
@@ -177,6 +212,13 @@
       @saved="reload"
     />
 
+    <!-- Guide channel form modal -->
+    <GuideChannelModal
+      v-if="showGuideForm"
+      @close="closeGuideForm"
+      @saved="reload"
+    />
+
     <!-- File manager modal -->
     <FileManagerModal
       v-if="showFileManager"
@@ -184,24 +226,41 @@
       @close="closeFileManager"
       @imported="reload"
     />
+
+    <!-- Player modal -->
+<PlayerModal
+  v-if="playerChannel"
+  :start-channel="playerChannel"
+  @close="playerChannel = null"
+/>
+
+
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue"
+import { ref, onMounted, computed } from "vue"
 import axios from "axios"
 import { useChannelsStore } from "../store/channels"
+
+// Modals
 import ChannelFormModal from "./ChannelFormModal.vue"
 import WeatherChannelModal from "./WeatherChannelModal.vue"
 import FileManagerModal from "./FileManagerModal.vue"
+import GuideChannelModal from "./GuideChannelModal.vue"
+import PlayerModal from "./PlayerModal.vue"
 
 import { 
   Pencil, Calendar, Trash2, 
-  Plus, Cloud, FolderPlus, PlayCircle, Flame 
+  Plus, Cloud, BookOpen, FolderPlus, PlayCircle, Flame, Skull
 } from "lucide-vue-next"
 
 const store = useChannelsStore()
 const channels = ref([])
+const showGuideForm = ref(false)
+
+const openGuideForm = () => { showGuideForm.value = true }
+const closeGuideForm = () => { showGuideForm.value = false }
 
 const showForm = ref(false)
 const showWeatherForm = ref(false)
@@ -211,10 +270,29 @@ const fileManagerChannel = ref(null)
 
 const API = "http://127.0.0.1:4343"
 
+// === Helpers ===
 const filename = (path) => {
   if (!path) return ""
   return path.split("/").pop()
 }
+
+// === Detect duplicate channel numbers ===
+const duplicateNumbers = computed(() => {
+  const counts = {}
+  channels.value.forEach(ch => {
+    const num = Number(ch.config.channel_number)
+    if (!num) return
+    counts[num] = (counts[num] || 0) + 1
+  })
+  return new Set(Object.keys(counts).map(n => Number(n)).filter(n => counts[n] > 1))
+})
+
+// === Sorted channels by channel number ===
+const sortedChannels = computed(() => {
+  return [...channels.value].sort((a, b) =>
+    (a.config.channel_number || Infinity) - (b.config.channel_number || Infinity)
+  )
+})
 
 const reload = async () => {
   await store.fetchChannels()
@@ -253,15 +331,9 @@ const deleteChannel = async (name) => {
 }
 
 // === Global actions ===
-const launchScanner = async () => {
-  try {
-    const res = await axios.post(`${API}/launch-scanner`)
-    if (res.data.url) {
-      window.open(res.data.url, "_blank")
-    }
-  } catch (err) {
-    alert("Failed to launch scanner: " + err.message)
-  }
+const launchScanner = () => {
+  // just go straight to the scanner URL
+  window.open("http://127.0.0.1:4242/", "_blank")
 }
 
 const hotStart = async () => {
@@ -271,6 +343,31 @@ const hotStart = async () => {
   } catch (err) {
     alert("Failed to run hot start: " + err.message)
   }
+}
+
+const killAll = async () => {
+  if (!confirm("Kill all FS42 processes?")) return
+  try {
+    await axios.post(`${API}/kill`)
+    alert("Kill script triggered!")
+  } catch (err) {
+    alert("Failed to run kill script: " + err.message)
+  }
+}
+
+// === Player Modal ===
+const showPlayer = ref(false)
+const playerChannel = ref(null)
+
+const openPlayer = (ch) => {
+  // ✅ only pass the channel number, not the whole object
+  playerChannel.value = ch.config?.channel_number || 1
+  showPlayer.value = true
+}
+
+const closePlayer = () => {
+  playerChannel.value = null
+  showPlayer.value = false
 }
 
 onMounted(reload)

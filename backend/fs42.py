@@ -4,7 +4,7 @@ import shutil
 import random
 from pathlib import Path
 
-# === Base paths (auto-detected) ===
+# === Base paths ===
 ROOT = Path(__file__).resolve().parents[1] / "FieldStation42"
 CATALOG_DIR = ROOT / "catalog"
 CONF_DIR = ROOT / "confs"
@@ -15,93 +15,109 @@ CONF_DIR.mkdir(parents=True, exist_ok=True)
 
 # ==== Helpers ====
 def generate_conf(ch: dict):
-    name = ch["name"]                # Display name (can be mixed case)
-    safe_name = name.lower()         # Always lowercase for filesystem
-    path = os.path.join(str(CATALOG_DIR), safe_name)
+    """
+    ch is { "name": str, "config": { … } }
+    Write a conf file wrapped as { "station_conf": { … } }
+    """
+    name = ch["name"]
+    safe_name = name.lower()
+    content_dir = f"catalog/{safe_name}"
 
     conf = {
         "station_conf": {
-            "network_name": name,  # keep original case for display
+            "network_name": name,
             "channel_number": ch["config"].get("channel_number", 1),
             "network_type": ch["config"].get("network_type", "standard"),
             "tags": ch["config"].get("tags", []),
             "tag_colors": ch["config"].get("tag_colors", {}),
         }
     }
+    sc = conf["station_conf"]
 
-    nt = conf["station_conf"]["network_type"]
+    nt = sc["network_type"]
 
     if nt == "standard":
-        conf["station_conf"].update({
-            "content_dir": path,
-            "commercial_dir": os.path.join(path, "commercials"),
-            "bump_dir": os.path.join(path, "bump"),
+        sc.update({
+            "content_dir": content_dir,
+            "commercial_dir": "commercial",
+            "bump_dir": "bump",
             "schedule_increment": ch["config"].get("schedule_increment", 30),
             "break_strategy": ch["config"].get("break_strategy", "standard"),
             "commercial_free": ch["config"].get("commercial_free", False),
-            "off_air_path": ch["config"].get("off_air_path", ""),
-            "signoff_path": ch["config"].get("signoff_path", "")
+            "off_air_path": ch["config"].get("off_air_path", "runtime/off_air_pattern.mp4"),
+            "signoff_path": ch["config"].get("signoff_path", "runtime/signoff.mp4"),
+            "standby_image": ch["config"].get("standby_image", "runtime/standby.png"),
+            "be_right_back_media": ch["config"].get("be_right_back_media", "runtime/brb.png"),
         })
-
-        os.makedirs(os.path.join(path, "commercials"), exist_ok=True)
-        os.makedirs(os.path.join(path, "bump"), exist_ok=True)
-
-        # === Sync tag folders ===
-        active_tags = set(conf["station_conf"]["tags"])
-        existing_folders = set()
-        if os.path.exists(path):
-            for entry in os.scandir(path):
-                if entry.is_dir() and entry.name not in ["commercials", "bump"]:
-                    existing_folders.add(entry.name)
-
-        # Create any new tag folders
-        for tag in active_tags:
-            os.makedirs(os.path.join(path, tag), exist_ok=True)
-
-        # Remove stale tag folders if empty
-        for folder in existing_folders - active_tags:
-            folder_path = os.path.join(path, folder)
-            try:
-                if not os.listdir(folder_path):  # empty
-                    shutil.rmtree(folder_path)
-                    print(f"[cleanup] Removed empty tag folder {folder_path}")
-            except Exception as e:
-                print(f"[cleanup] Could not remove {folder_path}: {e}")
+        os.makedirs(Path(CATALOG_DIR) / safe_name / "commercials", exist_ok=True)
+        os.makedirs(Path(CATALOG_DIR) / safe_name / "bump", exist_ok=True)
 
         # === Seed random weekly schedule ===
-        available_tags = conf["station_conf"]["tags"]
-        days = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]
-        for day in days:
-            conf["station_conf"][day] = {}
+        available_tags = sc["tags"]
+        for day in ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]:
+            sc[day] = {}
             for hour in range(24):
                 if available_tags:
                     chosen = random.choice(available_tags)
-                    conf["station_conf"][day][str(hour)] = {"tags": [chosen]}
+                    sc[day][str(hour)] = {"tags": [chosen]}
                 else:
-                    conf["station_conf"][day][str(hour)] = {}  # off_air
+                    sc[day][str(hour)] = {}  # off_air
 
     elif nt == "loop":
-        conf["station_conf"].update({
-            "content_dir": path,
+        sc.update({
+            "content_dir": content_dir,
             "network_long_name": ch["config"].get("network_long_name", f"{name} Loop"),
             "loop_shuffle": ch["config"].get("loop_shuffle", True),
         })
-        os.makedirs(path, exist_ok=True)
+        os.makedirs(Path(CATALOG_DIR) / safe_name, exist_ok=True)
+
+    elif nt == "guide":
+        sc.update({
+            "runtime_dir": f"runtime/{safe_name}",
+            "network_long_name": f"{name} Guide",
+            "fullscreen": ch["config"].get("fullscreen", False),
+            "width": ch["config"].get("width", 720),
+            "height": ch["config"].get("height", 480),
+            "window_decorations": ch["config"].get("window_decorations", False),
+            "top_bg": ch["config"].get("top_bg", "blue3"),
+            "bottom_bg": ch["config"].get("bottom_bg", "blue4"),
+            "pad": ch["config"].get("pad", 10),
+            "messages": ch["config"].get("messages", []),
+            "message_rotation_rate": ch["config"].get("message_rotation_rate", 10),
+            "message_fg": ch["config"].get("message_fg", "white"),
+            "message_font_family": ch["config"].get("message_font_family", "Arial"),
+            "message_font_size": ch["config"].get("message_font_size", 25),
+            "images": ch["config"].get("images", []),
+            "network_font_family": ch["config"].get("network_font_family", "Arial"),
+            "network_font_size": ch["config"].get("network_font_size", 12),
+            "schedule_font_family": ch["config"].get("schedule_font_family", "Arial"),
+            "schedule_font_size": ch["config"].get("schedule_font_size", 12),
+            "schedule_highlight_fg": ch["config"].get("schedule_highlight_fg", "yellow"),
+            "schedule_fg": ch["config"].get("schedule_fg", "white"),
+            "schedule_border_width": ch["config"].get("schedule_border_width", 4),
+            "schedule_border_relief": ch["config"].get("schedule_border_relief", "raised"),
+            "footer_messages": ch["config"].get("footer_messages", []),
+            "footer_height": ch["config"].get("footer_height", 50),
+            "schedule_row_count": ch["config"].get("schedule_row_count", 3),
+            "normalize_title": ch["config"].get("normalize_title", True),
+            "play_sound": ch["config"].get("play_sound", False),
+            "sound_to_play": ch["config"].get("sound_to_play", ""),
+        })
 
     elif nt == "streaming":
-        conf["station_conf"].update({
-            "runtime_dir": ch["config"].get("runtime_dir", f"runtime/{safe_name}"),
+        sc.update({
+            "runtime_dir": f"runtime/{safe_name}",
             "network_long_name": ch["config"].get("network_long_name", f"{name} Streaming"),
             "streams": ch["config"].get("streams", []),
         })
 
     elif nt == "web":
-        conf["station_conf"].update({
+        sc.update({
             "web_url": ch["config"].get("web_url", "")
         })
 
-    # ✅ Save config file with lowercase filename
-    conf_path = os.path.join(CONF_DIR, f"{safe_name}.json")
+    # Save
+    conf_path = Path(CONF_DIR) / f"{safe_name}.json"
     with open(conf_path, "w") as f:
         json.dump(conf, f, indent=2)
 
@@ -110,56 +126,55 @@ def load_all_channels():
     result = {}
     if not os.path.exists(CONF_DIR):
         return result
+
     for fn in os.listdir(CONF_DIR):
         if not fn.endswith(".json"):
             continue
-        path = os.path.join(CONF_DIR, fn)
         try:
-            with open(path) as f:
+            with open(os.path.join(CONF_DIR, fn)) as f:
                 data = json.load(f)
         except Exception as e:
             print(f"[ERROR] Failed to load {fn}: {e}")
             continue
-        if "station_conf" not in data:
+
+        sc = data.get("station_conf")
+        if not sc:
             print(f"[WARN] Skipping {fn}, missing station_conf")
             continue
-        name = data["station_conf"]["network_name"]
+
+        name = sc["network_name"]
         safe_name = name.lower()
         result[name] = {
             "name": name,
-            "path": data["station_conf"].get("content_dir", str(CATALOG_DIR / safe_name)),
-            "config": data["station_conf"],
+            "path": sc.get("content_dir", str(CATALOG_DIR / safe_name)),
+            "config": sc
         }
     return result
 
 
 def delete_channel(name: str):
     safe_name = name.lower()
-    conf_path = os.path.join(CONF_DIR, f"{safe_name}.json")
-    if os.path.exists(conf_path):
-        os.remove(conf_path)
-    cat_path = os.path.join(CATALOG_DIR, safe_name)
-    if os.path.exists(cat_path):
+    conf_path = Path(CONF_DIR) / f"{safe_name}.json"
+    if conf_path.exists():
+        conf_path.unlink()
+    cat_path = Path(CATALOG_DIR) / safe_name
+    if cat_path.exists():
         shutil.rmtree(cat_path)
 
 
 def get_schedule(name: str):
-    # tolerate mixed case lookups
-    all_files = {fn.lower(): fn for fn in os.listdir(CONF_DIR) if fn.endswith(".json")}
-    key = f"{name.lower()}.json"
-    if key not in all_files:
-        raise FileNotFoundError(f"No conf found for {name}")
-
-    conf_path = os.path.join(CONF_DIR, all_files[key])
+    safe_name = name.lower()
+    conf_path = Path(CONF_DIR) / f"{safe_name}.json"
     with open(conf_path) as f:
         conf = json.load(f)
 
+    sc = conf.get("station_conf", {})
     schedule = {}
     for day in ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]:
         schedule[day] = {}
-        for hour, slot in conf["station_conf"].get(day, {}).items():
+        for hour, slot in sc.get(day, {}).items():
             tags = slot.get("tags", [])
-            if isinstance(tags, str):  # normalize to list
+            if isinstance(tags, str):
                 tags = [tags]
             schedule[day][hour] = {**slot, "tags": tags}
     return schedule
@@ -167,18 +182,19 @@ def get_schedule(name: str):
 
 def replace_schedule(name: str, new_schedule: dict):
     safe_name = name.lower()
-    conf_path = os.path.join(CONF_DIR, f"{safe_name}.json")
+    conf_path = Path(CONF_DIR) / f"{safe_name}.json"
     with open(conf_path) as f:
         conf = json.load(f)
 
-    conf["station_conf"].update(new_schedule)
+    sc = conf["station_conf"]
+    sc.update(new_schedule)
 
-    # normalize tags everywhere
+    # normalize tags
     for day in ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]:
-        for hour, slot in conf["station_conf"].get(day, {}).items():
+        for hour, slot in sc.get(day, {}).items():
             tags = slot.get("tags", [])
             if isinstance(tags, str):
-                conf["station_conf"][day][hour]["tags"] = [tags]
+                sc[day][hour]["tags"] = [tags]
 
     with open(conf_path, "w") as f:
         json.dump(conf, f, indent=2)
@@ -187,18 +203,19 @@ def replace_schedule(name: str, new_schedule: dict):
 
 def patch_slot(name: str, day: str, hour: int, slot: dict):
     safe_name = name.lower()
-    conf_path = os.path.join(CONF_DIR, f"{safe_name}.json")
+    conf_path = Path(CONF_DIR) / f"{safe_name}.json"
     with open(conf_path) as f:
         conf = json.load(f)
 
-    if day not in conf["station_conf"]:
-        conf["station_conf"][day] = {}
+    sc = conf.setdefault("station_conf", {})
+    if day not in sc:
+        sc[day] = {}
 
     tags = slot.get("tags", [])
     if isinstance(tags, str):
         tags = [tags]
 
-    conf["station_conf"][day][str(hour)] = {**slot, "tags": tags}
+    sc[day][str(hour)] = {**slot, "tags": tags}
 
     with open(conf_path, "w") as f:
         json.dump(conf, f, indent=2)
