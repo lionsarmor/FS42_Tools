@@ -1,7 +1,6 @@
 import os
 import json
 import shutil
-import random
 from pathlib import Path
 
 # === Base paths ===
@@ -9,120 +8,164 @@ ROOT = Path(__file__).resolve().parents[1] / "FieldStation42"
 CATALOG_DIR = ROOT / "catalog"
 CONF_DIR = ROOT / "confs"
 
+# Ensure base dirs exist
 CATALOG_DIR.mkdir(parents=True, exist_ok=True)
 CONF_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# === Guide baseline config (1080p fullscreen) ===
+GUIDE_BASELINE_CONF = {
+    "network_name": "Guide",
+    "channel_number": 1,
+    "network_type": "guide",
+    "runtime_dir": "runtime/guide",
+
+    # Sound
+    "play_sound": True,
+    "sound_to_play": "runtime/guide/background.mp3",
+
+    # Appearance defaults
+    "fullscreen": True,
+    "width": 1920,
+    "height": 1080,
+    "window_decorations": False,
+    "top_bg": "blue3",
+    "bottom_bg": "blue4",
+    "pad": 20,
+
+    # Messages/images
+    "messages": [
+        "FieldStation42\nCable Entertainment",
+        "Cheers!\nFrom us to you!",
+        "FieldStation42 Guide\nOn cable mode."
+    ],
+    "message_rotation_rate": 10,
+    "message_fg": "white",
+    "message_font_family": "Arial",
+    "message_font_size": 32,
+
+    "images": [
+        "runtime/guide/image0.png",
+        "runtime/guide/image1.png",
+        "runtime/guide/image2.png"
+    ],
+
+    # Fonts for overlays
+    "network_font_family": "Arial",
+    "network_font_size": 20,
+    "schedule_font_family": "Arial",
+    "schedule_font_size": 20,
+    "schedule_highlight_fg": "yellow",
+    "schedule_fg": "white",
+    "schedule_border_width": 4,
+    "schedule_border_relief": "raised",
+
+    # Footer
+    "footer_messages": [
+        "You are watching FieldStation42",
+        "Now with cable mode."
+    ],
+    "footer_height": 100,
+
+    # Guide behavior
+    "schedule_row_count": 3,
+    "normalize_title": True,
+}
+
+# === Standard channel baseline ===
+BASELINE_CONF = {
+    "network_name": "",
+    "channel_number": 1,
+    "network_type": "standard",
+
+    "content_dir": "",
+    "commercial_dir": "commercial",
+    "bump_dir": "bump",
+    "tags": [],
+    "tag_colors": {},
+
+    "schedule_increment": 30,
+    "break_strategy": "standard",
+    "commercial_free": False,
+    "break_duration": 120,
+
+    "off_air_video": "runtime/off_air_pattern.mp4",
+    "sign_off_video": "runtime/signoff.mp4",
+    "standby_image": "runtime/standby.png",
+    "be_right_back_media": "runtime/brb.png",
+
+    "clip_shows": [],
+    "special_subfolders": [],
+
+    "video_scramble_fx": "",
+    "station_fx": "",
+    "panscan": 1.0,
+    "video_keepaspect": True,
+}
 
 
 # ==== Helpers ====
 def generate_conf(ch: dict):
     """
-    ch is { "name": str, "config": { … } }
-    Write a conf file wrapped as { "station_conf": { … } }
+    Generate a station config file.
+    Guide channels use GUIDE_BASELINE_CONF instead of BASELINE_CONF.
     """
-    name = ch["name"]
+    name = ch.get("name") or ch.get("config", {}).get("network_name") or "UnnamedChannel"
     safe_name = name.lower()
-    content_dir = f"catalog/{safe_name}"
+    user_conf = ch.get("config", {})
 
-    conf = {
-        "station_conf": {
-            "network_name": name,
-            "channel_number": ch["config"].get("channel_number", 1),
-            "network_type": ch["config"].get("network_type", "standard"),
-            "tags": ch["config"].get("tags", []),
-            "tag_colors": ch["config"].get("tag_colors", {}),
-        }
-    }
-    sc = conf["station_conf"]
+    # Pick baseline based on type
+    if user_conf.get("network_type") == "guide":
+        sc = dict(GUIDE_BASELINE_CONF)
+    else:
+        sc = dict(BASELINE_CONF)
 
-    nt = sc["network_type"]
+    sc.update(user_conf)
+    sc["network_name"] = name
 
-    if nt == "standard":
-        sc.update({
-            "content_dir": content_dir,
-            "commercial_dir": "commercial",
-            "bump_dir": "bump",
-            "schedule_increment": ch["config"].get("schedule_increment", 30),
-            "break_strategy": ch["config"].get("break_strategy", "standard"),
-            "commercial_free": ch["config"].get("commercial_free", False),
-            "off_air_path": ch["config"].get("off_air_path", "runtime/off_air_pattern.mp4"),
-            "signoff_path": ch["config"].get("signoff_path", "runtime/signoff.mp4"),
-            "standby_image": ch["config"].get("standby_image", "runtime/standby.png"),
-            "be_right_back_media": ch["config"].get("be_right_back_media", "runtime/brb.png"),
-        })
-        os.makedirs(Path(CATALOG_DIR) / safe_name / "commercials", exist_ok=True)
+    # For standard channels, enforce catalog paths
+    if sc.get("network_type") != "guide":
+        content_dir = f"catalog/{safe_name}"
+        sc["content_dir"] = content_dir
+
+        # Ensure channel dirs exist
+        os.makedirs(Path(content_dir), exist_ok=True)
+        os.makedirs(Path(CATALOG_DIR) / safe_name / "commercial", exist_ok=True)
         os.makedirs(Path(CATALOG_DIR) / safe_name / "bump", exist_ok=True)
+        for tag in sc.get("tags", []):
+            os.makedirs(Path(CATALOG_DIR) / safe_name / tag, exist_ok=True)
 
-        # === Seed random weekly schedule ===
-        available_tags = sc["tags"]
-        for day in ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]:
-            sc[day] = {}
-            for hour in range(24):
-                if available_tags:
-                    chosen = random.choice(available_tags)
-                    sc[day][str(hour)] = {"tags": [chosen]}
-                else:
-                    sc[day][str(hour)] = {}  # off_air
+        # Special subfolders
+        for sf in sc.get("special_subfolders", []):
+            if isinstance(sf, dict):
+                value = sf.get("value", "").strip()
+                if value:
+                    base = Path(CATALOG_DIR) / safe_name
+                    if sf.get("type") == "bump":
+                        base = base / "bump"
+                    os.makedirs(base / value, exist_ok=True)
 
-    elif nt == "loop":
-        sc.update({
-            "content_dir": content_dir,
-            "network_long_name": ch["config"].get("network_long_name", f"{name} Loop"),
-            "loop_shuffle": ch["config"].get("loop_shuffle", True),
-        })
-        os.makedirs(Path(CATALOG_DIR) / safe_name, exist_ok=True)
+        # Default schedule if missing
+        if not any(day in sc for day in [
+            "monday", "tuesday", "wednesday",
+            "thursday", "friday", "saturday", "sunday"
+        ]):
+            for day in [
+                "monday", "tuesday", "wednesday",
+                "thursday", "friday", "saturday", "sunday"
+            ]:
+                sc[day] = {}
+                for h in range(24):
+                    sc[day][str(h)] = {"tags": sc["tags"] or []}
 
-    elif nt == "guide":
-        sc.update({
-            "runtime_dir": f"runtime/{safe_name}",
-            "network_long_name": f"{name} Guide",
-            "fullscreen": ch["config"].get("fullscreen", False),
-            "width": ch["config"].get("width", 720),
-            "height": ch["config"].get("height", 480),
-            "window_decorations": ch["config"].get("window_decorations", False),
-            "top_bg": ch["config"].get("top_bg", "blue3"),
-            "bottom_bg": ch["config"].get("bottom_bg", "blue4"),
-            "pad": ch["config"].get("pad", 10),
-            "messages": ch["config"].get("messages", []),
-            "message_rotation_rate": ch["config"].get("message_rotation_rate", 10),
-            "message_fg": ch["config"].get("message_fg", "white"),
-            "message_font_family": ch["config"].get("message_font_family", "Arial"),
-            "message_font_size": ch["config"].get("message_font_size", 25),
-            "images": ch["config"].get("images", []),
-            "network_font_family": ch["config"].get("network_font_family", "Arial"),
-            "network_font_size": ch["config"].get("network_font_size", 12),
-            "schedule_font_family": ch["config"].get("schedule_font_family", "Arial"),
-            "schedule_font_size": ch["config"].get("schedule_font_size", 12),
-            "schedule_highlight_fg": ch["config"].get("schedule_highlight_fg", "yellow"),
-            "schedule_fg": ch["config"].get("schedule_fg", "white"),
-            "schedule_border_width": ch["config"].get("schedule_border_width", 4),
-            "schedule_border_relief": ch["config"].get("schedule_border_relief", "raised"),
-            "footer_messages": ch["config"].get("footer_messages", []),
-            "footer_height": ch["config"].get("footer_height", 50),
-            "schedule_row_count": ch["config"].get("schedule_row_count", 3),
-            "normalize_title": ch["config"].get("normalize_title", True),
-            "play_sound": ch["config"].get("play_sound", False),
-            "sound_to_play": ch["config"].get("sound_to_play", ""),
-        })
-
-    elif nt == "streaming":
-        sc.update({
-            "runtime_dir": f"runtime/{safe_name}",
-            "network_long_name": ch["config"].get("network_long_name", f"{name} Streaming"),
-            "streams": ch["config"].get("streams", []),
-        })
-
-    elif nt == "web":
-        sc.update({
-            "web_url": ch["config"].get("web_url", "")
-        })
-
-    # Save
+    # Save JSON
     conf_path = Path(CONF_DIR) / f"{safe_name}.json"
     with open(conf_path, "w") as f:
-        json.dump(conf, f, indent=2)
+        json.dump({"station_conf": sc}, f, indent=2)
 
 
 def load_all_channels():
+    """Load all channel configs and normalize them to baselines"""
     result = {}
     if not os.path.exists(CONF_DIR):
         return result
@@ -142,27 +185,55 @@ def load_all_channels():
             print(f"[WARN] Skipping {fn}, missing station_conf")
             continue
 
-        name = sc["network_name"]
+        # Merge against the correct baseline
+        if sc.get("network_type") == "guide":
+            merged = dict(GUIDE_BASELINE_CONF)
+        else:
+            merged = dict(BASELINE_CONF)
+        merged.update(sc)
+
+        # Always enforce a safe name
+        name = merged.get("network_name") or fn.replace(".json", "")
+        if not name:
+            name = "UnnamedChannel"
         safe_name = name.lower()
+
         result[name] = {
             "name": name,
-            "path": sc.get("content_dir", str(CATALOG_DIR / safe_name)),
-            "config": sc
+            "path": merged.get("content_dir", str(CATALOG_DIR / safe_name)),
+            "config": merged
         }
+
+        # Rewrite normalized file
+        conf_path = Path(CONF_DIR) / fn
+        with open(conf_path, "w") as f:
+            json.dump({"station_conf": merged}, f, indent=2)
+
     return result
 
 
 def delete_channel(name: str):
+    """Delete only the config JSON.
+    Never remove a catalog directory if it contains files.
+    """
     safe_name = name.lower()
+
+    # Delete config file
     conf_path = Path(CONF_DIR) / f"{safe_name}.json"
     if conf_path.exists():
         conf_path.unlink()
+
+    # Check catalog path
     cat_path = Path(CATALOG_DIR) / safe_name
     if cat_path.exists():
-        shutil.rmtree(cat_path)
+        if not any(cat_path.iterdir()):  # Only delete if empty
+            shutil.rmtree(cat_path)
+        else:
+            print(f"[SAFEGUARD] Not deleting {cat_path}, directory not empty.")
 
 
 def get_schedule(name: str):
+    """Return weekly schedule (normalized tags)"""
     safe_name = name.lower()
     conf_path = Path(CONF_DIR) / f"{safe_name}.json"
     with open(conf_path) as f:
@@ -170,7 +241,10 @@ def get_schedule(name: str):
 
     sc = conf.get("station_conf", {})
     schedule = {}
-    for day in ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]:
+    for day in [
+        "monday", "tuesday", "wednesday",
+        "thursday", "friday", "saturday", "sunday"
+    ]:
         schedule[day] = {}
         for hour, slot in sc.get(day, {}).items():
             tags = slot.get("tags", [])
@@ -181,6 +255,7 @@ def get_schedule(name: str):
 
 
 def replace_schedule(name: str, new_schedule: dict):
+    """Replace full schedule"""
     safe_name = name.lower()
     conf_path = Path(CONF_DIR) / f"{safe_name}.json"
     with open(conf_path) as f:
@@ -189,8 +264,10 @@ def replace_schedule(name: str, new_schedule: dict):
     sc = conf["station_conf"]
     sc.update(new_schedule)
 
-    # normalize tags
-    for day in ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]:
+    for day in [
+        "monday", "tuesday", "wednesday",
+        "thursday", "friday", "saturday", "sunday"
+    ]:
         for hour, slot in sc.get(day, {}).items():
             tags = slot.get("tags", [])
             if isinstance(tags, str):
@@ -202,6 +279,7 @@ def replace_schedule(name: str, new_schedule: dict):
 
 
 def patch_slot(name: str, day: str, hour: int, slot: dict):
+    """Patch one slot in schedule"""
     safe_name = name.lower()
     conf_path = Path(CONF_DIR) / f"{safe_name}.json"
     with open(conf_path) as f:
@@ -223,6 +301,7 @@ def patch_slot(name: str, day: str, hour: int, slot: dict):
 
 
 def reset_system():
+    """Wipe and reinit"""
     shutil.rmtree(CATALOG_DIR, ignore_errors=True)
     shutil.rmtree(CONF_DIR, ignore_errors=True)
     os.makedirs(CATALOG_DIR, exist_ok=True)

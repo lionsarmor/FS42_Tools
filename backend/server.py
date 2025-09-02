@@ -39,15 +39,27 @@ def _resolve_channel_name(name: str, channels: dict) -> str:
         raise HTTPException(status_code=404, detail="Channel not found")
     return lookup[lname]
 
+# === Helper: enforce baseline keys (important!!) ===
+def _enforce_baseline(conf: dict) -> dict:
+    """Ensure all baseline keys from fs42.BASELINE_CONF are present."""
+    sc = dict(fs42.BASELINE_CONF)
+    sc.update(conf or {})
+    return sc
+
 # === CHANNELS API ===
 @app.get("/channels")
 def get_channels():
-    return list(fs42.load_all_channels().values())
+    channels = fs42.load_all_channels()
+    # Inject baseline keys into every config
+    for ch in channels.values():
+        ch["config"] = _enforce_baseline(ch.get("config", {}))
+    return list(channels.values())
 
 @app.post("/channels")
 def create_channel(payload: dict):
     """Create a new channel"""
     conf = payload.get("station_conf", payload)
+    conf = _enforce_baseline(conf)
     ch = {
         "name": conf.get("network_name", "UnnamedChannel"),
         "config": conf
@@ -62,6 +74,7 @@ def update_channel(name: str, payload: dict):
     real_name = _resolve_channel_name(name, channels)
 
     conf = payload.get("station_conf", payload)
+    conf = _enforce_baseline(conf)
     ch = {
         "name": conf.get("network_name", real_name),
         "config": conf
@@ -83,7 +96,7 @@ def get_schedule(name: str):
         schedule = fs42.get_schedule(name)
         channels = fs42.load_all_channels()
         real_name = _resolve_channel_name(name, channels)
-        conf = channels[real_name]["config"]
+        conf = _enforce_baseline(channels[real_name]["config"])
         return {
             "schedule": schedule,
             "tags": conf.get("tags", []),
@@ -96,6 +109,7 @@ def get_schedule(name: str):
 def replace_schedule(name: str, schedule: dict):
     try:
         updated = fs42.replace_schedule(name, schedule)
+        updated["station_conf"] = _enforce_baseline(updated["station_conf"])
         return {"status": "ok", "conf": updated}
     except Exception as e:
         raise HTTPException(500, f"Failed to replace schedule: {e}")
@@ -104,6 +118,7 @@ def replace_schedule(name: str, schedule: dict):
 def patch_schedule_slot(name: str, day: str, hour: int, slot: dict):
     try:
         updated = fs42.patch_slot(name, day, hour, slot)
+        updated["station_conf"] = _enforce_baseline(updated["station_conf"])
         return {"status": "ok", "conf": updated}
     except Exception as e:
         raise HTTPException(500, f"Failed to patch slot: {e}")
@@ -113,7 +128,7 @@ def patch_schedule_slot(name: str, day: str, hour: int, slot: dict):
 def get_bump_files(name: str):
     channels = fs42.load_all_channels()
     real_name = _resolve_channel_name(name, channels)
-    conf = channels[real_name]["config"]
+    conf = _enforce_baseline(channels[real_name]["config"])
     bump_dir = conf.get("bump_dir", "bump")
     bump_path = BASE_DIR / "FieldStation42" / bump_dir
     if not bump_path.exists():
@@ -203,13 +218,78 @@ def kill_all():
 def get_empty_folders():
     channels = fs42.load_all_channels()
     results = {}
-    for name, conf in channels.items():
-        content_dir = conf.get("config", {}).get("content_dir")
+
+    for name, ch in channels.items():
+        conf = _enforce_baseline(ch.get("config", {}))
+        content_dir = conf.get("content_dir")
         empty = []
-        if content_dir and os.path.isdir(content_dir):
-            for root, dirs, files in os.walk(content_dir):
-                if not files and not dirs:
-                    rel_path = os.path.relpath(root, content_dir)
-                    empty.append(rel_path)
+
+        if content_dir:
+            base_path = Path(content_dir)
+            if not base_path.is_absolute():
+                base_path = Path(fs42.CATALOG_DIR) / Path(content_dir).name
+
+            if base_path.exists():
+                # check only immediate subfolders
+                for folder in base_path.iterdir():
+                    if folder.is_dir() and not any(folder.iterdir()):
+                        empty.append(folder.name)
+
         results[name] = empty
+
     return results
+
+# === Fonts API ===
+@app.get("/fonts")
+def list_fonts():
+    """Return a list of system fonts (requires fontconfig)."""
+    try:
+        result = subprocess.run(
+            ["fc-list", ":", "family"],
+            capture_output=True, text=True, check=True
+        )
+        fonts = sorted(set(line.strip().split(",")[0] for line in result.stdout.splitlines() if line.strip()))
+        return {"fonts": fonts}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to list fonts: {e}")
+
+# === Runtime files API ===
+@app.get("/api/runtime-files")
+def list_runtime_files():
+    result = {
+        "off_air_video": [],
+        "sign_off_video": [],
+        "standby_image": [],
+        "be_right_back_media": [],
+    }
+
+    if not RUNTIME_DIR.exists():
+        return result
+
+    for f in RUNTIME_DIR.iterdir():
+        if f.is_file():
+            # Videos
+            if f.suffix.lower() in [".mp4", ".mkv", ".avi", ".mov"]:
+                result["off_air_video"].append(f.name)
+                result["sign_off_video"].append(f.name)
+                result["be_right_back_media"].append(f.name)
+            # Images
+            if f.suffix.lower() in [".png", ".jpg", ".jpeg", ".gif", ".bmp"]:
+                result["standby_image"].append(f.name)
+                result["be_right_back_media"].append(f.name)
+
+    return result
+
+
+@app.post("/channels/normalize")
+def normalize_channels():
+    """Normalize all channel configs to the latest schema."""
+    try:
+        channels = fs42.load_all_channels()
+        updated = []
+        for name, ch in channels.items():
+            fs42.generate_conf(ch)  # will rewrite with enforced keys
+            updated.append(name)
+        return {"status": "ok", "updated": updated}
+    except Exception as e:
+        raise HTTPException(500, f"Normalization failed: {e}")

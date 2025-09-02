@@ -31,7 +31,6 @@
           Add Guide
         </button>
 
-
         <!-- Launch Scanner -->
         <button
           @click="launchScanner"
@@ -50,18 +49,25 @@
           Hot Start
         </button>
 
-            <!-- Kill (Skull button) -->
-    <button
-      @click="killAll"
-      class="flex items-center px-3 py-2 bg-red-700 text-white rounded hover:bg-red-600"
-    >
-      <Skull class="w-4 h-4 mr-1" />
-      Kill
-    </button>
+        <!-- Kill -->
+        <button
+          @click="killAll"
+          class="flex items-center px-3 py-2 bg-red-700 text-white rounded hover:bg-red-600"
+        >
+          <Skull class="w-4 h-4 mr-1" />
+          Kill
+        </button>
+
+        <!-- Normalize (NEW) -->
+        <button
+          @click="normalizeChannels"
+          class="flex items-center px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-500"
+        >
+          <RefreshCw class="w-4 h-4 mr-1" />
+          Normalize
+        </button>
       </div>
     </div>
-
-
 
     <!-- Channel list table -->
     <div class="overflow-x-auto">
@@ -87,7 +93,7 @@
             <!-- Channel name -->
             <td class="px-3 py-2 truncate">{{ ch.name }}</td>
 
-            <!-- Channel number (red + bold if duplicate) -->
+            <!-- Channel number -->
             <td
               class="px-3 py-2"
               :class="{
@@ -102,7 +108,7 @@
               {{ ch.config.network_type || "standard" }}
             </td>
 
-            <!-- Tags summary -->
+            <!-- Tags -->
             <td class="px-3 py-2 text-xs text-gray-400 leading-tight">
               <span v-if="Array.isArray(ch.config.tags) && ch.config.tags.length">
                 {{ ch.config.tags.join(", ") }}
@@ -110,7 +116,7 @@
               <span v-else>—</span>
             </td>
 
-            <!-- Commercial free flag -->
+            <!-- Commercial free -->
             <td class="px-3 py-2 text-center">
               <span v-if="ch.config.commercial_free">✅</span>
               <span v-else>❌</span>
@@ -118,14 +124,14 @@
 
             <!-- Signoff / Off-air -->
             <td class="px-3 py-2 text-xs text-gray-400 leading-tight">
-              <div v-if="ch.config.signoff_path">
-                {{ filename(ch.config.signoff_path) }}
+              <div v-if="ch.config.sign_off_video">
+                {{ filename(ch.config.sign_off_video) }}
               </div>
-              <div v-if="ch.config.off_air_path">
-                {{ filename(ch.config.off_air_path) }}
+              <div v-if="ch.config.off_air_video">
+                {{ filename(ch.config.off_air_video) }}
               </div>
               <div
-                v-if="!ch.config.signoff_path && !ch.config.off_air_path"
+                v-if="!ch.config.sign_off_video && !ch.config.off_air_video"
                 class="text-red-400"
               >
                 None
@@ -157,7 +163,7 @@
                 <!-- Edit Config -->
                 <button
                   class="w-10 h-10 flex items-center justify-center bg-blue-600 text-white rounded hover:bg-blue-500"
-                  @click="openForm(ch)"
+                  @click="openEdit(ch)"
                   title="Edit Config"
                 >
                   <Pencil class="w-5 h-5" />
@@ -191,13 +197,12 @@
                 </button>
               </div>
             </td>
-
           </tr>
         </tbody>
       </table>
     </div>
 
-    <!-- Channel form modal -->
+    <!-- Modals -->
     <ChannelFormModal
       v-if="showForm"
       :channel="editingChannel"
@@ -205,36 +210,31 @@
       @saved="reload"
     />
 
-    <!-- Weather channel form modal -->
     <WeatherChannelModal
       v-if="showWeatherForm"
+      :channel="editingChannel"
       @close="closeWeatherForm"
       @saved="reload"
     />
 
-    <!-- Guide channel form modal -->
     <GuideChannelModal
       v-if="showGuideForm"
+      :channel="editingChannel"
       @close="closeGuideForm"
       @saved="reload"
     />
 
-    <!-- File manager modal -->
     <FileManagerModal
       v-if="showFileManager"
       :channel="fileManagerChannel"
       @close="closeFileManager"
       @imported="reload"
     />
-
-    <!-- Player modal -->
-<PlayerModal
-  v-if="playerChannel"
-  :start-channel="playerChannel"
-  @close="playerChannel = null"
-/>
-
-
+    <PlayerModal
+      v-if="playerChannel"
+      :start-channel="playerChannel"
+      @close="playerChannel = null"
+    />
   </div>
 </template>
 
@@ -252,7 +252,7 @@ import PlayerModal from "./PlayerModal.vue"
 
 import { 
   Pencil, Calendar, Trash2, 
-  Plus, Cloud, BookOpen, FolderPlus, PlayCircle, Flame, Skull
+  Plus, Cloud, BookOpen, FolderPlus, PlayCircle, Flame, Skull, RefreshCw
 } from "lucide-vue-next"
 
 const store = useChannelsStore()
@@ -276,7 +276,7 @@ const filename = (path) => {
   return path.split("/").pop()
 }
 
-// === Detect duplicate channel numbers ===
+// Detect duplicate channel numbers
 const duplicateNumbers = computed(() => {
   const counts = {}
   channels.value.forEach(ch => {
@@ -287,18 +287,20 @@ const duplicateNumbers = computed(() => {
   return new Set(Object.keys(counts).map(n => Number(n)).filter(n => counts[n] > 1))
 })
 
-// === Sorted channels by channel number ===
+// Sorted channels
 const sortedChannels = computed(() => {
   return [...channels.value].sort((a, b) =>
     (a.config.channel_number || Infinity) - (b.config.channel_number || Infinity)
   )
 })
 
+// Reload list
 const reload = async () => {
   await store.fetchChannels()
   channels.value = store.channels
 }
 
+// Channel CRUD
 const openForm = (ch = null) => {
   editingChannel.value = ch
   showForm.value = true
@@ -308,12 +310,8 @@ const closeForm = () => {
   editingChannel.value = null
 }
 
-const openWeatherForm = () => {
-  showWeatherForm.value = true
-}
-const closeWeatherForm = () => {
-  showWeatherForm.value = false
-}
+const openWeatherForm = () => { showWeatherForm.value = true }
+const closeWeatherForm = () => { showWeatherForm.value = false }
 
 const openFileManager = (ch) => {
   fileManagerChannel.value = ch
@@ -330,11 +328,8 @@ const deleteChannel = async (name) => {
   reload()
 }
 
-// === Global actions ===
-const launchScanner = () => {
-  // just go straight to the scanner URL
-  window.open("http://127.0.0.1:4242/", "_blank")
-}
+// Global actions
+const launchScanner = () => window.open("http://127.0.0.1:4242/", "_blank")
 
 const hotStart = async () => {
   try {
@@ -355,19 +350,36 @@ const killAll = async () => {
   }
 }
 
-// === Player Modal ===
+// NEW: Normalize button handler
+const normalizeChannels = async () => {
+  if (!confirm("Normalize all channel configs to the latest format?")) return
+  try {
+    await axios.post(`${API}/channels/normalize`)
+    alert("All channels normalized!")
+    reload()
+  } catch (err) {
+    alert("Failed to normalize: " + err.message)
+  }
+}
+
+// Player modal
 const showPlayer = ref(false)
 const playerChannel = ref(null)
-
 const openPlayer = (ch) => {
-  // ✅ only pass the channel number, not the whole object
   playerChannel.value = ch.config?.channel_number || 1
   showPlayer.value = true
 }
-
 const closePlayer = () => {
   playerChannel.value = null
   showPlayer.value = false
+}
+
+const openEdit = (ch) => {
+  editingChannel.value = ch
+  const type = ch.config?.network_type || "standard"
+  if (type === "guide") showGuideForm.value = true
+  else if (type === "weather" || type === "web") showWeatherForm.value = true
+  else showForm.value = true
 }
 
 onMounted(reload)
