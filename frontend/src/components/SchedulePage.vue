@@ -1,3 +1,4 @@
+<!-- SchedulePage.vue -->
 <template>
   <div class="p-6">
     <!-- Header -->
@@ -48,7 +49,7 @@
 
     <!-- Modal -->
     <ScheduleSlotModal
-      v-if="slotModal && schedule[slotModal.day]"
+      v-if="slotModal"
       :day="slotModal.day"
       :hour="slotModal.hour"
       :channel="channelName"
@@ -85,8 +86,8 @@ const fetchSchedule = async () => {
     schedule.value = res.schedule || {}
     tags.value = res.tags || []
     tagColors.value = {
-      off_air: "#ff0000",   // 🔴 red default
-      signoff: "#ff7f00",   // 🟠 orange default
+      off_air: "#ff0000",   // 🔴 default
+      signoff: "#ff7f00",   // 🟠 default
       ...res.tag_colors
     }
   } catch (err) {
@@ -99,9 +100,9 @@ const getSlotTags = (day, hour) =>
 
 const getSlotColor = (day, hour) => {
   const tagsHere = getSlotTags(day, hour)
-  if (!tagsHere.length) return "#1e2a8a" // 🔵 default for empty
+  if (!tagsHere.length) return "#1e2a8a" // 🔵 default
   const tag = tagsHere[0]
-  return validColor(tagColors.value[tag]) || "#3b52f6" // 🔵 fallback
+  return validColor(tagColors.value[tag]) || "#3b52f6"
 }
 
 function validColor(color) {
@@ -111,7 +112,6 @@ function validColor(color) {
 }
 
 const openSlot = (day, hour) => {
-  if (!schedule.value[day]) return
   slotModal.value = { day, hour }
 }
 

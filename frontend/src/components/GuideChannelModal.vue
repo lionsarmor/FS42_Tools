@@ -2,7 +2,7 @@
   <div class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
     <div class="bg-brand-surface text-brand-text rounded-lg p-6 w-full max-w-5xl shadow-xl overflow-y-auto max-h-[90vh]">
       <h3 class="text-xl font-semibold mb-4">
-        {{ props.channel ? "Edit Guide Channel" : "Create Guide Channel" }}
+        {{ channel ? "Edit Guide Channel" : "Create Guide Channel" }}
       </h3>
 
       <form @submit.prevent="save" class="space-y-6">
@@ -27,20 +27,33 @@
         <fieldset class="border border-brand-muted p-4 rounded-lg">
           <legend class="px-2 text-lg font-semibold">Appearance</legend>
           <div class="grid grid-cols-2 gap-4">
-            <div><label class="block text-sm">Fullscreen</label><input type="checkbox" v-model="form.fullscreen" /></div>
-            <div><label class="block text-sm">Window Decorations</label><input type="checkbox" v-model="form.window_decorations" /></div>
-            <div><label class="block text-sm">Width</label><input type="number" v-model.number="form.width" class="w-full p-2 rounded bg-brand-bg border border-brand-muted" /></div>
-            <div><label class="block text-sm">Height</label><input type="number" v-model.number="form.height" class="w-full p-2 rounded bg-brand-bg border border-brand-muted" /></div>
-
+            <div>
+              <input type="checkbox" v-model="form.station_conf.fullscreen" id="fullscreen" />
+              <label for="fullscreen" class="text-sm">Fullscreen</label>
+            </div>
+            <div>
+              <input type="checkbox" v-model="form.station_conf.window_decorations" id="windowDeco" />
+              <label for="windowDeco" class="text-sm">Window Decorations</label>
+            </div>
+            <div>
+              <label class="block text-sm">Width</label>
+              <input type="number" v-model.number="form.station_conf.width"
+                     class="w-full p-2 rounded bg-brand-bg border border-brand-muted" />
+            </div>
+            <div>
+              <label class="block text-sm">Height</label>
+              <input type="number" v-model.number="form.station_conf.height"
+                     class="w-full p-2 rounded bg-brand-bg border border-brand-muted" />
+            </div>
             <div>
               <label class="block text-sm">Top Background</label>
-              <select v-model="form.top_bg" class="w-full p-2 rounded bg-brand-bg border border-brand-muted">
+              <select v-model="form.station_conf.top_bg" class="w-full p-2 rounded bg-brand-bg border border-brand-muted">
                 <option v-for="c in colors" :key="c" :value="c">{{ c }}</option>
               </select>
             </div>
             <div>
               <label class="block text-sm">Bottom Background</label>
-              <select v-model="form.bottom_bg" class="w-full p-2 rounded bg-brand-bg border border-brand-muted">
+              <select v-model="form.station_conf.bottom_bg" class="w-full p-2 rounded bg-brand-bg border border-brand-muted">
                 <option v-for="c in colors" :key="c" :value="c">{{ c }}</option>
               </select>
             </div>
@@ -53,19 +66,19 @@
           <div class="grid grid-cols-3 gap-4">
             <div>
               <label class="block text-sm">Message Font</label>
-              <select v-model="form.message_font_family" class="w-full p-2 rounded bg-brand-bg border border-brand-muted">
+              <select v-model="form.station_conf.message_font_family" class="w-full p-2 rounded bg-brand-bg border border-brand-muted">
                 <option v-for="f in fonts" :key="f" :value="f">{{ f }}</option>
               </select>
             </div>
             <div>
               <label class="block text-sm">Network Font</label>
-              <select v-model="form.network_font_family" class="w-full p-2 rounded bg-brand-bg border border-brand-muted">
+              <select v-model="form.station_conf.network_font_family" class="w-full p-2 rounded bg-brand-bg border border-brand-muted">
                 <option v-for="f in fonts" :key="f" :value="f">{{ f }}</option>
               </select>
             </div>
             <div>
               <label class="block text-sm">Schedule Font</label>
-              <select v-model="form.schedule_font_family" class="w-full p-2 rounded bg-brand-bg border border-brand-muted">
+              <select v-model="form.station_conf.schedule_font_family" class="w-full p-2 rounded bg-brand-bg border border-brand-muted">
                 <option v-for="f in fonts" :key="f" :value="f">{{ f }}</option>
               </select>
             </div>
@@ -75,37 +88,40 @@
         <!-- Messages -->
         <fieldset class="border border-brand-muted p-4 rounded-lg">
           <legend class="px-2 text-lg font-semibold">Messages</legend>
-          <div v-for="(msg, i) in form.messages" :key="i" class="flex space-x-2 mb-2">
-            <input v-model="form.messages[i]" type="text" placeholder="Add message"
+          <div v-for="(msg, i) in form.station_conf.messages" :key="i" class="flex space-x-2 mb-2">
+            <input v-model="form.station_conf.messages[i]" type="text" placeholder="Add message"
                    class="flex-1 p-2 rounded bg-brand-bg border border-brand-muted" />
-            <button type="button" @click="form.messages.splice(i,1)" class="px-2 bg-brand-danger text-white rounded">✕</button>
+            <button type="button" @click="form.station_conf.messages.splice(i,1)"
+                    class="px-2 bg-brand-danger text-white rounded">✕</button>
           </div>
-          <button type="button" @click="form.messages.push('')" class="px-3 py-1 bg-brand-accent text-white rounded">+ Add Message</button>
+          <button type="button" @click="form.station_conf.messages.push('')"
+                  class="px-3 py-1 bg-brand-accent text-white rounded">+ Add Message</button>
         </fieldset>
 
         <!-- Images -->
         <fieldset class="border border-brand-muted p-4 rounded-lg">
           <legend class="px-2 text-lg font-semibold">Images</legend>
-          <div v-for="(img, i) in form.images" :key="i" class="flex space-x-2 mb-2">
-            <input v-model="form.images[i]" type="text"
+          <div v-for="(img, i) in form.station_conf.images" :key="i" class="flex space-x-2 mb-2">
+            <input v-model="form.station_conf.images[i]" type="text"
                    class="flex-1 p-2 rounded bg-brand-bg border border-brand-muted" readonly />
-            <button type="button" @click="removeImage(i)" class="px-2 bg-brand-danger text-white rounded">✕</button>
+            <button type="button" @click="form.station_conf.images.splice(i,1)"
+                    class="px-2 bg-brand-danger text-white rounded">✕</button>
           </div>
-          <button type="button" @click="triggerImageUpload" class="px-3 py-1 bg-brand-accent text-white rounded">
-            + Add Image
-          </button>
-          <input type="file" ref="imageInput" class="hidden" accept="image/*" multiple @change="onImageSelect" />
+          <button type="button" @click="form.station_conf.images.push('')"
+                  class="px-3 py-1 bg-brand-accent text-white rounded">+ Add Image</button>
         </fieldset>
 
         <!-- Footer -->
         <fieldset class="border border-brand-muted p-4 rounded-lg">
           <legend class="px-2 text-lg font-semibold">Footer</legend>
-          <div v-for="(msg, i) in form.footer_messages" :key="i" class="flex space-x-2 mb-2">
-            <input v-model="form.footer_messages[i]" type="text" placeholder="Add message"
+          <div v-for="(msg, i) in form.station_conf.footer_messages" :key="i" class="flex space-x-2 mb-2">
+            <input v-model="form.station_conf.footer_messages[i]" type="text" placeholder="Add message"
                    class="flex-1 p-2 rounded bg-brand-bg border border-brand-muted" />
-            <button type="button" @click="form.footer_messages.splice(i,1)" class="px-2 bg-brand-danger text-white rounded">✕</button>
+            <button type="button" @click="form.station_conf.footer_messages.splice(i,1)"
+                    class="px-2 bg-brand-danger text-white rounded">✕</button>
           </div>
-          <button type="button" @click="form.footer_messages.push('')" class="px-3 py-1 bg-brand-accent text-white rounded">+ Add Footer</button>
+          <button type="button" @click="form.station_conf.footer_messages.push('')"
+                  class="px-3 py-1 bg-brand-accent text-white rounded">+ Add Footer</button>
         </fieldset>
 
         <!-- Colors -->
@@ -114,33 +130,34 @@
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="block text-sm">Message Text Color</label>
-              <select v-model="form.message_fg" class="w-full p-2 rounded bg-brand-bg border border-brand-muted">
+              <select v-model="form.station_conf.message_fg" class="w-full p-2 rounded bg-brand-bg border border-brand-muted">
                 <option v-for="c in colors" :key="c" :value="c">{{ c }}</option>
               </select>
             </div>
             <div>
               <label class="block text-sm">Schedule Text Color</label>
-              <select v-model="form.schedule_fg" class="w-full p-2 rounded bg-brand-bg border border-brand-muted">
+              <select v-model="form.station_conf.schedule_fg" class="w-full p-2 rounded bg-brand-bg border border-brand-muted">
                 <option v-for="c in colors" :key="c" :value="c">{{ c }}</option>
               </select>
             </div>
             <div>
               <label class="block text-sm">Schedule Highlight Color</label>
-              <select v-model="form.schedule_highlight_fg" class="w-full p-2 rounded bg-brand-bg border border-brand-muted">
+              <select v-model="form.station_conf.schedule_highlight_fg" class="w-full p-2 rounded bg-brand-bg border border-brand-muted">
                 <option v-for="c in colors" :key="c" :value="c">{{ c }}</option>
               </select>
             </div>
           </div>
         </fieldset>
 
-        <!-- Sound -->
+        <!-- Background Sound -->
         <fieldset class="border border-brand-muted p-4 rounded-lg">
           <legend class="px-2 text-lg font-semibold">Sound</legend>
           <div class="flex space-x-2">
-            <input v-model="form.sound_to_play" type="text"
+            <input v-model="form.station_conf.sound_to_play" type="text"
                    class="flex-1 p-2 rounded bg-brand-bg border border-brand-muted" />
-            <button type="button" @click="triggerSoundUpload" class="px-3 py-1 bg-brand-accent text-white rounded">+ File</button>
             <input type="file" ref="soundInput" class="hidden" @change="onSoundSelect" />
+            <button type="button" @click="triggerSoundUpload"
+                    class="px-3 py-1 bg-brand-accent text-white rounded">+ File</button>
           </div>
         </fieldset>
 
@@ -150,22 +167,22 @@
           <div class="grid grid-cols-3 gap-4">
             <div>
               <label class="block text-sm">Rotation Rate (seconds)</label>
-              <input v-model.number="form.message_rotation_rate" type="number" min="1"
+              <input v-model.number="form.station_conf.message_rotation_rate" type="number" min="1"
                      class="w-full p-2 rounded bg-brand-bg border border-brand-muted" />
             </div>
             <div>
               <label class="block text-sm">Padding</label>
-              <input v-model.number="form.pad" type="number" min="0"
+              <input v-model.number="form.station_conf.pad" type="number" min="0"
                      class="w-full p-2 rounded bg-brand-bg border border-brand-muted" />
             </div>
             <div>
               <label class="block text-sm">Message Font Size</label>
-              <input v-model.number="form.message_font_size" type="number" min="6"
+              <input v-model.number="form.station_conf.message_font_size" type="number" min="6"
                      class="w-full p-2 rounded bg-brand-bg border border-brand-muted" />
             </div>
           </div>
           <div class="flex items-center space-x-2 mt-4">
-            <input type="checkbox" v-model="form.normalize_title" />
+            <input type="checkbox" v-model="form.station_conf.normalize_title" />
             <label class="text-sm">Normalize Titles</label>
           </div>
         </fieldset>
@@ -173,9 +190,7 @@
         <!-- Save -->
         <div class="flex justify-end space-x-2">
           <button type="button" @click="$emit('close')" class="px-4 py-2 bg-gray-600 rounded text-white hover:bg-gray-500">Cancel</button>
-          <button type="submit" class="px-4 py-2 bg-green-700 rounded text-white hover:bg-green-600">
-            Save Guide
-          </button>
+          <button type="submit" class="px-4 py-2 bg-green-700 rounded text-white hover:bg-green-600">Save Guide</button>
         </div>
       </form>
     </div>
@@ -183,119 +198,62 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue"
+import { reactive, onMounted, ref } from "vue"
 import axios from "axios"
+import { useChannelsStore } from "../store/channels"
 
-const props = defineProps({
-  channel: { type: Object, default: null }
-})
+const props = defineProps({ channel: Object })
 const emit = defineEmits(["close", "saved"])
+const store = useChannelsStore()
 
-const fonts = ref(["Arial","Courier","Times New Roman","Verdana","Tahoma","Georgia"])
+const API = import.meta.env.VITE_API_URL
+
+const fonts = ref([])
 const colors = ["white","black","gray","yellow","red","green","blue1","blue2","blue3","blue4","purple"]
 
 const soundInput = ref(null)
-const imageInput = ref(null)
+const form = reactive({ station_conf: {} })
 
-// default form
-const form = ref({
-  station_conf: {
-    network_name: "Guide",
-    network_type: "guide",
-    channel_number: 1,
-    runtime_dir: "runtime/guide",
-
-    // Sound
-    play_sound: true,
-    sound_to_play: "runtime/guide/background.mp3",
-
-    // Appearance
-    fullscreen: true,
-    width: 1920,
-    height: 1080,
-    window_decorations: false,
-    top_bg: "blue3",
-    bottom_bg: "blue4",
-    pad: 20,
-
-    // Messages
-    messages: [
-      "FieldStation42\nCable Entertainment",
-      "Cheers!\nFrom us to you!",
-      "FieldStation42 Guide\nOn cable mode."
-    ],
-    message_rotation_rate: 10,
-    message_fg: "white",
-    message_font_family: "Arial",
-    message_font_size: 32,
-
-    images: [],
-
-    // Fonts
-    network_font_family: "Arial",
-    network_font_size: 20,
-    schedule_font_family: "Arial",
-    schedule_font_size: 20,
-    schedule_highlight_fg: "yellow",
-    schedule_fg: "white",
-    schedule_border_width: 4,
-    schedule_border_relief: "raised",
-
-    // Footer
-    footer_messages: [
-      "You are watching FieldStation42",
-      "Now with cable mode."
-    ],
-    footer_height: 70,
-
-    // Options
-    schedule_row_count: 6,
-    normalize_title: true
-  }
-})
-
-
-onMounted(() => {
-  if (props.channel?.config) {
-    const cfg = JSON.parse(JSON.stringify(props.channel.config))
-    Object.assign(form.value, cfg)
-    if (cfg.station_conf) {
-      Object.assign(form.value.station_conf, cfg.station_conf)
-    }
-  }
-})
-
-const save = async () => {
+// Load system fonts
+const loadFonts = async () => {
   try {
-    const payload = { station_conf: form.value.station_conf }
-
-    if (props.channel) {
-      await axios.put(
-        `http://127.0.0.1:4343/channels/${props.channel.name}`,
-        payload
-      )
-    } else {
-      await axios.post("http://127.0.0.1:4343/channels", payload)
-    }
-
-    emit("saved")
-    emit("close")
+    const res = await axios.get(`${API}/fonts`)
+    fonts.value = res.data.fonts || []
   } catch (err) {
-    console.error(err)
-    alert("Save failed: " + err.message)
+    console.error("Failed to fetch fonts", err)
+    fonts.value = ["Arial","Courier","Times New Roman","Verdana","Tahoma","Georgia"]
   }
 }
 
-const triggerSoundUpload = () => soundInput.value.click()
+onMounted(async () => {
+  if (props.channel?.config) {
+    form.station_conf = JSON.parse(JSON.stringify(props.channel.config))
+  } else {
+    try {
+      const res = await axios.get(`${API}/channels/baseline/guide`)
+      form.station_conf = res.data.station_conf
+    } catch (err) {
+      console.error("Failed to fetch guide baseline:", err)
+    }
+  }
+  loadFonts()
+})
+
+const triggerSoundUpload = () => soundInput.value?.click()
 const onSoundSelect = (e) => {
   const file = e.target.files[0]
-  if (file) form.value.sound_to_play = file.name
+  if (file) form.station_conf.sound_to_play = `runtime/guide/${file.name}`
 }
 
-const triggerImageUpload = () => imageInput.value.click()
-const onImageSelect = (e) => {
-  const files = Array.from(e.target.files)
-  files.forEach(file => form.value.images.push(file.name))
+const save = async () => {
+  const payload = form.station_conf   // << not wrapped
+  if (props.channel) {
+    await store.updateChannel(props.channel.name, payload)
+  } else {
+    await store.addChannel(payload)
+  }
+  emit("saved")
+  emit("close")
 }
-const removeImage = (i) => form.value.images.splice(i, 1)
+
 </script>

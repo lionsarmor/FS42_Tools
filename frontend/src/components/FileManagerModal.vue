@@ -80,7 +80,7 @@ const props = defineProps({
 })
 const emit = defineEmits(["close", "imported"])
 
-const API = "http://127.0.0.1:4343"
+const API = import.meta.env.VITE_API_URL
 
 // === State ===
 const availableFiles = ref([])

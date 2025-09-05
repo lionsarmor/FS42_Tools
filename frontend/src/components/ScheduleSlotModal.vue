@@ -1,3 +1,4 @@
+<!-- ScheduleSlotModal.vue -->
 <template>
   <div class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
     <div class="bg-brand-surface text-brand-text rounded-lg p-6 w-full max-w-md shadow-xl">
@@ -13,7 +14,7 @@
           multiple
           class="mt-1 p-2 w-full rounded bg-brand-bg border border-brand-muted text-brand-text h-28"
         >
-          <option v-for="tag in tags" :key="tag" :value="tag">{{ tag }}</option>
+          <option v-for="tag in availableTags" :key="tag" :value="tag">{{ tag }}</option>
           <option value="off_air">Off-Air</option>
           <option value="signoff">Sign-Off</option>
         </select>
@@ -28,6 +29,20 @@
             {{ tag }}
           </span>
         </div>
+      </div>
+
+      <!-- Special Tag -->
+      <div class="mb-3">
+        <label class="block text-sm font-medium">Special Tag</label>
+        <input
+          type="text"
+          v-model="specialInput"
+          placeholder="e.g. December, Halloween, Sports"
+          class="w-full p-2 rounded bg-brand-bg border border-brand-muted"
+        />
+        <p class="text-xs text-gray-400 mt-1">
+          Entering a special tag will replace this slot’s tags and add it to the tag list.
+        </p>
       </div>
 
       <!-- Start Bump -->
@@ -104,59 +119,76 @@
 </template>
 
 <script setup>
-import { reactive, ref } from "vue"
+import { reactive, ref, computed, watch } from "vue"
 import { useChannelsStore } from "../store/channels"
 
 const props = defineProps({
-  day: String,
-  hour: Number,
-  channel: String,
-  tags: Array,
-  tagColors: Object,
-  slot: Object
+  day: { type: String, required: true },
+  hour: { type: Number, required: true },
+  channel: { type: String, required: true },
+  tags: { type: Array, default: () => [] },
+  tagColors: { type: Object, default: () => ({}) },
+  slot: { type: Object, default: () => ({}) }
 })
 
 const emit = defineEmits(["close", "saved"])
 const store = useChannelsStore()
 
+// === Form state ===
 const form = reactive({
-  tags: props.slot?.tags || [],
-  start_bump: props.slot?.start_bump || "",
-  end_bump: props.slot?.end_bump || ""
+  tags: Array.isArray(props.slot.tags) ? [...props.slot.tags] : [],
+  start_bump: props.slot.start_bump || "",
+  end_bump: props.slot.end_bump || ""
 })
 
-// === Color logic (matches SchedulePage) ===
-const defaultTagColors = {
-  off_air: "#ff0000",   // 🔴 red
-  signoff: "#ff7f00"    // 🟠 orange
-}
+// Special input
+const specialInput = ref("")
 
+// === Available tags ===
+const availableTags = computed(() => {
+  const base = new Set(props.tags || [])
+  form.tags.forEach(t => base.add(t))
+  if (specialInput.value) base.add(specialInput.value)
+  return Array.from(base)
+})
+
+// === Color logic ===
+const defaultTagColors = { off_air: "#ff0000", signoff: "#ff7f00" }
 function isValidColor(color) {
   return typeof color === "string" && /^#[0-9A-Fa-f]{6}$/.test(color)
 }
-
 function getTagColor(tag) {
   if (isValidColor(props.tagColors?.[tag])) return props.tagColors[tag]
   if (defaultTagColors[tag]) return defaultTagColors[tag]
-  return "#3b52f6" // 🔵 fallback
+  return "#3b52f6"
 }
 
 // === File inputs ===
 const startBumpInput = ref(null)
 const endBumpInput = ref(null)
-
 function triggerFileInput(refName) {
   if (refName === "startBumpInput") startBumpInput.value.click()
   if (refName === "endBumpInput") endBumpInput.value.click()
 }
-
 function onFileSelect(e, field) {
   const file = e.target.files[0]
   if (file) form[field] = `runtime/${file.name}`
 }
 
+// === Watch special input ===
+watch(specialInput, (val) => {
+  if (val && val.trim()) {
+    form.tags = [val.trim()] // overwrite slot tags with special
+  }
+})
+
+// === Save slot ===
 const save = async () => {
-  await store.patchSlot(props.channel, props.day, props.hour, { ...form })
+  const payload = { ...form }
+  if (specialInput.value && specialInput.value.trim()) {
+    payload.tags = [specialInput.value.trim()]
+  }
+  await store.patchSlot(props.channel, props.day, props.hour, payload)
   emit("saved")
   emit("close")
 }

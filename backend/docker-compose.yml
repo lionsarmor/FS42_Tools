@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  weatherstar4000:
+    image: ghcr.io/netbymatt/ws4kp
+    container_name: ws4kp
+    ports:
+      - "9191:8080"   # 🔥 now on 9191 instead of 9090
+    environment:
+      - WSQS_latLonQuery=Rawlins WY USA
+    restart: unless-stopped

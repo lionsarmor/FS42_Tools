@@ -3,14 +3,14 @@
     <div class="bg-brand-surface rounded-lg p-4 w-full max-w-4xl shadow-lg">
       <!-- Header -->
       <div class="flex justify-between items-center mb-3">
-        <h3 class="text-lg font-semibold">📺 FieldStation42 TV</h3>
+        <h3 class="text-lg font-semibold">📺 Tsar TV</h3>
         <button @click="$emit('close')" class="text-red-400 hover:text-red-600">✖</button>
       </div>
 
-      <!-- MediaMTX Player -->
+      <!-- Player -->
       <div class="aspect-video bg-black mb-4">
         <iframe
-          src="http://100.93.192.114:8889/mystream"
+          :src="streamUrl"
           class="w-full h-full rounded"
           allow="autoplay; fullscreen"
         ></iframe>
@@ -24,6 +24,11 @@
         <button @click="tuneDirect" class="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded">Go</button>
         <button @click="channelUp" class="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded">➡️ Up</button>
       </div>
+
+      <!-- Error Display -->
+      <div v-if="errorMsg" class="mt-3 text-red-400 text-center text-sm">
+        {{ errorMsg }}
+      </div>
     </div>
   </div>
 </template>
@@ -33,35 +38,71 @@ import axios from "axios"
 import { ref, onMounted } from "vue"
 
 const props = defineProps({
-  startChannel: { type: Number, default: 1 }
+  startChannel: { type: Number, default: 1 },
+  streamUrl: { type: String, default: "https://cable.radroddy.com/mystream" }
 })
 
+const API = "https://api.radroddy.com"
+
 const directChannel = ref(props.startChannel)
+const errorMsg = ref("")
 
-const API = "http://127.0.0.1:4343"
-
+// === Fetch current channel ===
 const fetchCurrent = async () => {
   try {
     const res = await axios.get(`${API}/player/channels/current`)
-    if (res.data.channel_number) {
+    if (res.data.channel_number >= 0) {
       directChannel.value = res.data.channel_number
+      errorMsg.value = ""
     }
-  } catch {}
+  } catch {
+    errorMsg.value = "⚠️ FS42 player not responding"
+  }
 }
 
+// === Direct tune ===
 const tuneChannel = async (num) => {
   try {
-    await axios.get(`${API}/player/channels/${num}`)
-    directChannel.value = num
-  } catch {}
+    await axios.post(`${API}/player/channel`, {
+      command: "direct",
+      channel: num
+    })
+    await fetchCurrent()
+  } catch {
+    errorMsg.value = "⚠️ Tune failed"
+  }
 }
 
-const channelUp = async () => { await axios.get(`${API}/player/channels/up`); await fetchCurrent() }
-const channelDown = async () => { await axios.get(`${API}/player/channels/down`); await fetchCurrent() }
-const tuneDirect = async () => { if (directChannel.value > 0) await tuneChannel(directChannel.value) }
+// === Channel stepping ===
+const channelUp = async () => {
+  try {
+    await axios.post(`${API}/player/channels/up`)
+    await fetchCurrent()
+  } catch {
+    errorMsg.value = "⚠️ Up failed"
+  }
+}
 
+const channelDown = async () => {
+  try {
+    await axios.post(`${API}/player/channels/down`)
+    await fetchCurrent()
+  } catch {
+    errorMsg.value = "⚠️ Down failed"
+  }
+}
+
+// === Button action ===
+const tuneDirect = () => {
+  if (directChannel.value > 0) tuneChannel(directChannel.value)
+}
+
+// === Init ===
 onMounted(async () => {
-  if (props.startChannel > 0) await tuneChannel(props.startChannel)
-  else await fetchCurrent()
+  if (props.startChannel > 0) {
+    await tuneChannel(props.startChannel)
+  } else {
+    await fetchCurrent()
+  }
 })
 </script>
