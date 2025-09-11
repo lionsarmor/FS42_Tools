@@ -187,7 +187,7 @@ def normalize_channels():
             # Get fresh baseline for type
             baseline = fs42._baseline_for_type(ntype)
 
-            # Preserve name + number
+            # Preserve identity
             baseline["network_name"] = conf.get("network_name", name)
             baseline["channel_number"] = conf.get("channel_number", ch.get("channel_number", 1))
 
@@ -195,13 +195,30 @@ def normalize_channels():
             baseline["bump_dir"] = "bump"
             baseline["commercial_dir"] = "commercial"
 
-            # Preserve tags + schedule
             if ntype == "standard":
+                # Preserve tags + increment
                 baseline["tags"] = conf.get("tags", [])
                 baseline["schedule_increment"] = conf.get("schedule_increment", 30)
-                for day in ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]:
-                    if conf.get(day):
-                        baseline[day] = conf[day]
+
+                # Check if a schedule exists
+                has_schedule = any(
+                    conf.get(day)
+                    for day in ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]
+                )
+
+                if has_schedule:
+                    # Copy existing schedule
+                    for day in ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]:
+                        if conf.get(day):
+                            baseline[day] = conf[day]
+                elif baseline["tags"]:
+                    # No schedule but tags exist → generate default
+                    baseline.update(
+                        fs42._generate_default_schedule(
+                            baseline["tags"],
+                            baseline["schedule_increment"]
+                        )
+                    )
 
             # Write new config
             fs42.generate_conf({"name": baseline["network_name"], "config": baseline})
@@ -211,8 +228,6 @@ def normalize_channels():
     except Exception as e:
         raise HTTPException(500, f"Normalization failed: {e}")
 
-
-# === PLAYER API ===
 # === PLAYER API ===
 def _send_socket_command(command: dict):
     """Write a JSON command directly into channel.socket"""
