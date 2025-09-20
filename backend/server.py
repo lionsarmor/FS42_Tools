@@ -331,36 +331,32 @@ def launch_scanner():
 
         return {
             "status": "ok",
-            "url": "https://remote.radroddy.com",
+            "url": "http://100.93.192.114:4242/",  # Changed this line
             "pid": proc.pid
         }
     except Exception as e:
         raise HTTPException(500, f"Scanner failed: {e}")
 
-
 @app.post("/hot-start")
 def hot_start():
     try:
-        subprocess.run(
-            ["sudo", "systemctl", "restart", "fs42-hotstart"],
-            check=True,
+        result = subprocess.run(
+            ["sudo", "systemctl", "restart", "start"],
             capture_output=True,
-            text=True
+            text=True,
+            timeout=30
         )
-        pid_out = subprocess.check_output(
-            ["systemctl", "show", "-p", "MainPID", "--value", "fs42-hotstart"]
-        ).decode().strip()
+        
         return {
-            "status": "ok",
-            "pid": int(pid_out) if pid_out.isdigit() else None
+            "status": "ok" if result.returncode == 0 else "error",
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "message": "start.service restart completed"
         }
-    except subprocess.CalledProcessError as e:
-        raise HTTPException(
-            500,
-            f"Hot start failed: {e.stderr or e.stdout or str(e)}"
-        )
-
-
+        
+    except Exception as e:
+        raise HTTPException(500, f"Hot start failed: {str(e)}")
 
 @app.post("/kill")
 def kill_all():
@@ -441,7 +437,34 @@ def patch_channel_slot(name: str, day: str, hour: int, slot: dict):
     except Exception as e:
         raise HTTPException(500, f"Failed to patch slot: {e}")
    
+@app.post("/pi/volume/up")
+def pi_volume_up():
+    try:
+        # Send command to the Pi (you'll need to determine which Pi based on session/user)
+        # This could be via SSH, HTTP call to Pi's endpoint, or other method
+        # Example: subprocess.run(["ssh", "pi@{pi_ip}", "amixer", "set", "Master", "5%+"])
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(500, f"Pi volume up failed: {e}")
 
+@app.post("/pi/volume/down") 
+def pi_volume_down():
+    # Similar implementation for volume down
+    return {"status": "ok"}
+
+@app.post("/pi/volume/mute")
+def pi_mute():
+    # Similar implementation for mute
+    return {"status": "ok"}
+
+@app.post("/pi/reboot")
+def pi_reboot():
+    try:
+        # Send reboot command to specific Pi
+        # subprocess.run(["ssh", "pi@{pi_ip}", "sudo", "reboot"])
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(500, f"Pi reboot failed: {e}")
 
 
 if __name__ == "__main__":

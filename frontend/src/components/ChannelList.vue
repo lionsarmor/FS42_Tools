@@ -4,9 +4,18 @@
     <div class="flex justify-between items-center mb-4">
       <h2 class="text-xl font-semibold">Channels</h2>
       <div class="flex space-x-2">
+        <!-- Remote Button - NO PIN REQUIRED -->
+        <button
+          @click="openRemote"
+          class="flex items-center px-3 py-2 bg-green-700 text-white rounded hover:bg-green-600"
+        >
+          <Tv class="w-4 h-4 mr-1" />
+          Remote
+        </button>
+
         <!-- Add Standard Channel -->
         <button
-          @click="openForm()"
+          @click="requirePin(() => openForm())"
           class="flex items-center px-3 py-2 bg-green-900 text-white rounded hover:bg-green-800"
         >
           <Plus class="w-4 h-4 mr-1" />
@@ -15,7 +24,7 @@
 
         <!-- Add Weather Channel -->
         <button
-          @click="openWeatherForm()"
+          @click="requirePin(() => openWeatherForm())"
           class="flex items-center px-3 py-2 bg-blue-900 text-white rounded hover:bg-blue-800"
         >
           <Cloud class="w-4 h-4 mr-1" />
@@ -24,7 +33,7 @@
 
         <!-- Add Guide Channel -->
         <button
-          @click="openGuideForm()"
+          @click="requirePin(() => openGuideForm())"
           class="flex items-center px-3 py-2 bg-brand-accent text-white rounded hover:bg-brand-accentHover"
         >
           <BookOpen class="w-4 h-4 mr-1" />
@@ -33,7 +42,7 @@
 
         <!-- Launch Scanner -->
         <button
-          @click="launchScanner"
+          @click="requirePin(() => launchScanner())"
           class="flex items-center px-3 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-500"
         >
           <PlayCircle class="w-4 h-4 mr-1" />
@@ -42,7 +51,7 @@
 
         <!-- Hot Start -->
         <button
-          @click="hotStart"
+          @click="requirePin(() => hotStart())"
           class="flex items-center px-3 py-2 bg-orange-600 text-white rounded hover:bg-orange-500"
         >
           <Flame class="w-4 h-4 mr-1" />
@@ -51,7 +60,7 @@
 
         <!-- Kill -->
         <button
-          @click="killAll"
+          @click="requirePin(() => killAll())"
           class="flex items-center px-3 py-2 bg-red-700 text-white rounded hover:bg-red-600"
         >
           <Skull class="w-4 h-4 mr-1" />
@@ -60,7 +69,7 @@
 
         <!-- Normalize -->
         <button
-          @click="normalizeChannels"
+          @click="requirePin(() => normalizeChannels())"
           class="flex items-center px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-500"
         >
           <RefreshCw class="w-4 h-4 mr-1" />
@@ -140,7 +149,7 @@
             <!-- Actions -->
             <td class="px-3 py-2 whitespace-nowrap text-center">
               <div class="flex justify-center space-x-2">
-                <!-- ▶️ Play -->
+                <!-- ▶️ Play - KEEP EXACTLY AS ORIGINAL -->
                 <button
                   class="w-10 h-10 flex items-center justify-center bg-green-600 text-white rounded hover:bg-green-500"
                   @click="openPlayer(ch)"
@@ -153,7 +162,7 @@
                 <button
                   v-if="ch.config?.network_type !== 'web' && ch.config?.network_type !== 'weather'"
                   class="w-10 h-10 flex items-center justify-center bg-blue-600 text-white rounded hover:bg-blue-500"
-                  @click="openEdit(ch)"
+                  @click="requirePin(() => openEdit(ch))"
                   title="Edit Config"
                 >
                   <Pencil class="w-5 h-5" />
@@ -170,18 +179,18 @@
                 </button>
 
                 <!-- Edit Schedule -->
-                <router-link
-                  :to="`/channel/${ch.name}/schedule`"
+                <button
                   class="w-10 h-10 flex items-center justify-center bg-brand-accent text-white rounded hover:bg-brand-accentHover"
                   title="Edit Schedule"
+                  @click="requirePin(() => $router.push(`/channel/${ch.name}/schedule`))"
                 >
                   <Calendar class="w-5 h-5" />
-                </router-link>
+                </button>
 
                 <!-- Add Videos -->
                 <button
                   class="w-10 h-10 flex items-center justify-center bg-purple-600 text-white rounded hover:bg-purple-500"
-                  @click="openFileManager(ch)"
+                  @click="requirePin(() => openFileManager(ch))"
                   title="Add Videos"
                 >
                   <FolderPlus class="w-5 h-5" />
@@ -190,7 +199,7 @@
                 <!-- Delete -->
                 <button
                   class="w-10 h-10 flex items-center justify-center bg-brand-danger text-white rounded hover:bg-red-500"
-                  @click="deleteChannel(ch.name)"
+                  @click="requirePin(() => deleteChannel(ch.name))"
                   title="Delete"
                 >
                   <Trash2 class="w-5 h-5" />
@@ -202,18 +211,56 @@
       </table>
     </div>
 
-    <!-- Modals -->
+    <!-- PIN Modal -->
+    <div v-if="showPinModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div class="bg-white rounded-lg p-6 w-80 shadow-xl">
+        <h3 class="text-lg font-semibold mb-4 text-gray-800">Enter PIN to Continue</h3>
+        <input
+          ref="pinInput"
+          v-model="enteredPin"
+          type="password"
+          maxlength="4"
+          placeholder="Enter 4-digit PIN"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-lg tracking-widest"
+          @keyup.enter="checkPin"
+          @input="formatPin"
+        />
+        <div class="flex justify-end space-x-3 mt-4">
+          <button
+            @click="cancelPin"
+            class="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+          >
+            Cancel
+          </button>
+          <button
+            @click="checkPin"
+            class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Confirm
+          </button>
+        </div>
+        <div v-if="pinError" class="text-red-500 text-sm mt-2">
+          Incorrect PIN. Please try again.
+        </div>
+      </div>
+    </div>
+
+    <!-- Modals - KEEP EXACTLY AS ORIGINAL -->
     <ChannelFormModal v-if="showForm" :channel="editingChannel" @close="closeForm" @saved="reload" />
     <WeatherChannelModal v-if="showWeatherForm" :channel="editingChannel" @close="closeWeatherForm" @saved="reload" />
     <GuideChannelModal v-if="showGuideForm" :channel="editingChannel" @close="closeGuideForm" @saved="reload" />
     <FileManagerModal v-if="showFileManager" :channel="fileManagerChannel" @close="closeFileManager" @imported="reload" />
     <PlayerModal v-if="playerChannel" :start-channel="playerChannel" @close="closePlayer" />
+    <Remote v-if="showRemote" @close="closeRemote" />
   </div>
 </template>
 
-
 <script setup>
-import { ref, onMounted, computed } from "vue"
+import { ref, onMounted, computed, nextTick } from "vue"
 import axios from "axios"
 import { useChannelsStore } from "../store/channels"
 
@@ -223,9 +270,10 @@ import WeatherChannelModal from "./WeatherChannelModal.vue"
 import GuideChannelModal from "./GuideChannelModal.vue"
 import FileManagerModal from "./FileManagerModal.vue"
 import PlayerModal from "./PlayerModal.vue"
+import Remote from "./Remote.vue"
 
 import {
-  Pencil, Calendar, Trash2, Plus, Cloud, BookOpen, FolderPlus, PlayCircle, Flame, Skull, RefreshCw
+  Pencil, Tv, Calendar, Trash2, Plus, Cloud, BookOpen, FolderPlus, PlayCircle, Flame, Skull, RefreshCw
 } from "lucide-vue-next"
 
 const store = useChannelsStore()
@@ -237,10 +285,62 @@ const showGuideForm = ref(false)
 const showFileManager = ref(false)
 const fileManagerChannel = ref(null)
 const playerChannel = ref(null)
+const showRemote = ref(false)
+
+// PIN protection variables
+const showPinModal = ref(false)
+const enteredPin = ref('')
+const pinError = ref(false)
+const pinInput = ref(null)
+const pendingAction = ref(null)
+const CORRECT_PIN = '7127'
 
 const API = import.meta.env.VITE_API_URL
 
 const filename = (path) => path?.split("/").pop() || ""
+
+// Remote functions
+const openRemote = () => { showRemote.value = true }
+const closeRemote = () => { showRemote.value = false }
+
+// PIN protection functions
+const requirePin = (action) => {
+  pendingAction.value = action
+  showPinModal.value = true
+  pinError.value = false
+  enteredPin.value = ''
+  
+  nextTick(() => {
+    if (pinInput.value) {
+      pinInput.value.focus()
+    }
+  })
+}
+
+const formatPin = () => {
+  enteredPin.value = enteredPin.value.replace(/\D/g, '')
+}
+
+const checkPin = () => {
+  if (enteredPin.value === CORRECT_PIN) {
+    showPinModal.value = false
+    pinError.value = false
+    if (pendingAction.value) {
+      pendingAction.value()
+      pendingAction.value = null
+    }
+  } else {
+    pinError.value = true
+    enteredPin.value = ''
+  }
+}
+
+const cancelPin = () => {
+  showPinModal.value = false
+  pinError.value = false
+  enteredPin.value = ''
+  pendingAction.value = null
+}
 
 // Duplicate numbers
 const duplicateNumbers = computed(() => {
@@ -288,8 +388,7 @@ const deleteChannel = async (name) => {
   }
 }
 
-
-// === Player ===
+// === Player - KEEP EXACTLY AS ORIGINAL ===
 const openPlayer = (ch) => { playerChannel.value = ch.config?.channel_number || 1 }
 const closePlayer = () => { playerChannel.value = null }
 
@@ -304,7 +403,6 @@ const openEdit = (ch) => {
 
 // === Global backend actions ===
 const launchScanner = async () => {
-  // open a blank tab immediately (keeps popup blocker happy)
   const newTab = window.open("about:blank", "_blank")
 
   try {
@@ -314,7 +412,6 @@ const launchScanner = async () => {
 
     alert(`📡 Scanner starting (PID ${pid})`)
 
-    // small wait to let backend spin up
     setTimeout(() => {
       if (newTab) newTab.location.href = url
     }, 5000)
@@ -336,14 +433,11 @@ const hotStart = async () => {
   }
 }
 
-
-// === Kill ===
 const killAll = async () => {
   try {
     const res = await axios.post(`${API}/kill`)
     console.log("Kill response:", res.data)
 
-    // 💀 Skull added to popup message
     alert(
       `💀 Kill Triggered!\n\n` +
       `Status: ${res.data.status}\n\n` +
@@ -356,7 +450,6 @@ const killAll = async () => {
     alert("💀 Kill failed – check backend logs")
   }
 }
-
 
 const normalizeChannels = async () => {
   try {
