@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       allowedHosts: [
         'tools.radroddy.com',
+        'remote.radroddy.com',
         'localhost',
         '127.0.0.1'
       ],

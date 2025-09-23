@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import fs42
 import uvicorn
+import random
 
 app = FastAPI()
 
@@ -28,12 +29,11 @@ FS42_API = "http://127.0.0.1:4242"
 # === Enable CORS for frontend ===
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],       # allow all origins
-    allow_credentials=True,    # keep cookies/auth if you need them
-    allow_methods=["*"],       # allow all HTTP verbs
-    allow_headers=["*"],       # allow all headers
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-
 
 # === Startup ===
 @app.on_event("startup")
@@ -66,13 +66,7 @@ def proxy_fs42(path: str, method="GET", data=None):
 
 # === Save helpers ===
 def save_standard_channel(conf: dict, old_name=None):
-    """
-    Standard/guide/loop channels → enforce baseline, generate schedule,
-    create tag folders, etc.
-    """
     conf = _enforce_baseline(conf)
-
-    # If no schedule exists but tags are present → generate schedule
     if conf.get("network_type", "standard") == "standard":
         has_schedule = any(
             conf.get(day) for day in
@@ -90,22 +84,13 @@ def save_standard_channel(conf: dict, old_name=None):
     return {"status": "ok"}
 
 def save_guide_channel(conf: dict, old_name=None):
-    """
-    Guide channels are a special case: enforce GUIDE_BASELINE_CONF and
-    store cleanly under station_conf (no nested station_conf).
-    """
     gc = dict(fs42.GUIDE_BASELINE_CONF)
     gc.update(conf or {})
-
     ch = {"name": gc["network_name"], "config": gc}
     fs42.generate_conf(ch, old_name=old_name)
     return {"status": "ok"}
 
-
 def save_weather_channel(conf: dict, old_name=None):
-    """
-    Weather/web/streaming → pass-through. Only web_url matters.
-    """
     wc = {
         "network_name": conf.get("network_name", "WeatherTV"),
         "channel_number": conf.get("channel_number", 1),
@@ -113,7 +98,7 @@ def save_weather_channel(conf: dict, old_name=None):
         "web_url": conf.get("web_url", ""),
     }
     ch = {"name": wc["network_name"], "config": wc}
-    fs42.generate_conf(ch, old_name=old_name)  # stores clean JSON
+    fs42.generate_conf(ch, old_name=old_name)
     return {"status": "ok"}
 
 # === CHANNELS API ===
@@ -174,45 +159,31 @@ def normalize_channels():
         channels = fs42.load_all_channels()
         updated = []
         skipped = []
-
         for name, ch in channels.items():
             conf = ch.get("config", {})
             ntype = conf.get("network_type", "standard")
-
-            # Skip special channel types
             if ntype in ("guide", "weather", "web", "streaming"):
                 skipped.append(name)
                 continue
 
-            # Get fresh baseline for type
             baseline = fs42._baseline_for_type(ntype)
-
-            # Preserve identity
             baseline["network_name"] = conf.get("network_name", name)
             baseline["channel_number"] = conf.get("channel_number", ch.get("channel_number", 1))
-
-            # Always enforce correct dirs
             baseline["bump_dir"] = "bump"
             baseline["commercial_dir"] = "commercial"
 
             if ntype == "standard":
-                # Preserve tags + increment
                 baseline["tags"] = conf.get("tags", [])
                 baseline["schedule_increment"] = conf.get("schedule_increment", 30)
-
-                # Check if a schedule exists
                 has_schedule = any(
                     conf.get(day)
                     for day in ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]
                 )
-
                 if has_schedule:
-                    # Copy existing schedule
                     for day in ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]:
                         if conf.get(day):
                             baseline[day] = conf[day]
                 elif baseline["tags"]:
-                    # No schedule but tags exist → generate default
                     baseline.update(
                         fs42._generate_default_schedule(
                             baseline["tags"],
@@ -220,7 +191,6 @@ def normalize_channels():
                         )
                     )
 
-            # Write new config
             fs42.generate_conf({"name": baseline["network_name"], "config": baseline})
             updated.append(name)
 
@@ -230,7 +200,6 @@ def normalize_channels():
 
 # === PLAYER API ===
 def _send_socket_command(command: dict):
-    """Write a JSON command directly into channel.socket"""
     try:
         with open(CHANNEL_SOCKET, "w") as fp:
             fp.write(json.dumps(command))
@@ -239,7 +208,6 @@ def _send_socket_command(command: dict):
 
 @app.get("/player/channels/current")
 def get_current_channel():
-    """Read current player status from play_status.socket"""
     try:
         with open(STATUS_SOCKET, "r") as f:
             return json.loads(f.read().strip())
@@ -263,11 +231,56 @@ def tune_channel(num: int):
 
 @app.post("/player/channel")
 def player_channel(cmd: dict):
-    """Generic channel command passthrough"""
     if not isinstance(cmd, dict):
         raise HTTPException(400, "Invalid command format")
     _send_socket_command(cmd)
     return {"status": "ok", "command": cmd}
+
+# === Pi Control Proxy API ===
+@app.get("/pi/{box_id}/ping")
+def ping_pi(box_id: str):
+    pi_ips = {
+        'cable' : '100.117.143.10',
+        'cable1': '100.81.14.111',
+        'cable2': '100.92.235.10',
+    }
+    if box_id not in pi_ips:
+        raise HTTPException(404, "Box not found")
+    try:
+        requests.get(f"http://{pi_ips[box_id]}:9595/ping", timeout=2)
+        return {"status": "online", "box": box_id}
+    except:
+        raise HTTPException(503, "Box offline")
+
+@app.post("/pi/{box_id}/volume/{action}")
+def pi_volume_control(box_id: str, action: str):
+    pi_ips = {
+        'cable' : '100.117.143.10',
+        'cable1': '100.81.14.111',
+        'cable2': '100.92.235.10',
+    }
+    if box_id not in pi_ips or action not in ['up', 'down', 'mute']:
+        raise HTTPException(400, "Invalid request")
+    try:
+        requests.post(f"http://{pi_ips[box_id]}:9595/volume/{action}", timeout=5)
+        return {"status": "ok", "action": action, "box": box_id}
+    except:
+        raise HTTPException(503, f"Failed to {action} volume on {box_id}")
+
+@app.post("/pi/{box_id}/reboot")
+def pi_reboot_box(box_id: str):
+    pi_ips = {
+        'cable' : '100.117.143.10',
+        'cable1': '100.81.14.111',
+        'cable2': '100.92.235.10',
+    }
+    if box_id not in pi_ips:
+        raise HTTPException(404, "Box not found")
+    try:
+        requests.post(f"http://{pi_ips[box_id]}:9595/reboot", timeout=5)
+        return {"status": "rebooting", "box": box_id}
+    except:
+        raise HTTPException(503, f"Failed to reboot {box_id}")
 
 # === Runtime files API ===
 @app.get("/api/runtime-files")
@@ -320,7 +333,6 @@ def launch_scanner():
             "PATH": f"{FS42_FIELDSTATION}/env/bin:" + env["PATH"],
             "VIRTUAL_ENV": f"{FS42_FIELDSTATION}/env",
         })
-
         with open(log_path, "a") as log_file:
             log_file.write("\n=== SCANNER START ===\n")
             log_file.write(f"Timestamp: {datetime.datetime.now()}\n")
@@ -328,12 +340,7 @@ def launch_scanner():
                 cmd, cwd=FS42_FIELDSTATION,
                 stdout=log_file, stderr=subprocess.STDOUT, env=env
             )
-
-        return {
-            "status": "ok",
-            "url": "http://100.93.192.114:4242/",  # Changed this line
-            "pid": proc.pid
-        }
+        return {"status": "ok", "url": "http://100.93.192.114:4242/", "pid": proc.pid}
     except Exception as e:
         raise HTTPException(500, f"Scanner failed: {e}")
 
@@ -346,7 +353,6 @@ def hot_start():
             text=True,
             timeout=30
         )
-        
         return {
             "status": "ok" if result.returncode == 0 else "error",
             "returncode": result.returncode,
@@ -354,7 +360,6 @@ def hot_start():
             "stderr": result.stderr,
             "message": "start.service restart completed"
         }
-        
     except Exception as e:
         raise HTTPException(500, f"Hot start failed: {str(e)}")
 
@@ -378,6 +383,7 @@ def kill_all():
     except Exception as e:
         raise HTTPException(500, f"Kill failed: {e}")
 
+# === Fonts API ===
 @app.get("/fonts")
 def list_system_fonts():
     font_dirs = [
@@ -387,7 +393,6 @@ def list_system_fonts():
         str(Path.home() / ".local/share/fonts"),
     ]
     exts = (".ttf", ".otf", ".ttc")
-
     found = []
     for d in font_dirs:
         p = Path(d)
@@ -395,20 +400,14 @@ def list_system_fonts():
             continue
         for f in p.rglob("*"):
             if f.suffix.lower() in exts:
-                found.append(f.stem)  # filename without extension
-
-    # Deduplicate + sort
+                found.append(f.stem)
     fonts = sorted(set(found))
     if not fonts:
         fonts = ["Arial", "Courier", "Times New Roman", "Verdana", "Tahoma", "Georgia"]
-
     return {"fonts": fonts}
 
- # === Schedule API ===
-import random
-
+# === Schedule API ===
 def _random_color():
-    # bright-ish random hex
     return "#{:06x}".format(random.randint(0, 0xFFFFFF))
 
 @app.get("/channels/{name}/schedule")
@@ -419,15 +418,37 @@ def get_channel_schedule(name: str):
         ch = confs.get(name)
         tags = ch["config"].get("tags", []) if ch else []
         tag_colors = dict(ch["config"].get("tag_colors", {}))
-
-        # assign random colors to any missing tags
         for tag in tags:
             if tag not in tag_colors:
                 tag_colors[tag] = _random_color()
-
         return {"schedule": schedule, "tags": tags, "tag_colors": tag_colors}
     except Exception as e:
         raise HTTPException(500, f"Failed to fetch schedule: {e}")
+
+@app.post("/pi/{box_id}/shutdown")
+def pi_shutdown_box(box_id: str):
+    pi_ips = {
+        'cable1': '100.81.14.111',
+        'cable2': '100.92.235.10',
+    }
+    if box_id not in pi_ips:
+        raise HTTPException(404, "Box not found")
+    try:
+        # Forward shutdown command to the Pi’s controls.py service
+        requests.post(f"http://{pi_ips[box_id]}:9595/shutdown", timeout=5)
+        return {"status": "shutting_down", "box": box_id}
+    except Exception as e:
+        raise HTTPException(503, f"Failed to shutdown {box_id}: {e}")
+
+# === Player Status Proxy ===
+@app.get("/player/status")
+def proxy_player_status():
+    try:
+        r = requests.get(f"{FS42_API}/player/status", timeout=3)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        raise HTTPException(500, f"Failed to fetch FS42 player status: {e}")
 
 @app.patch("/channels/{name}/schedule/{day}/{hour}")
 def patch_channel_slot(name: str, day: str, hour: int, slot: dict):
@@ -436,35 +457,20 @@ def patch_channel_slot(name: str, day: str, hour: int, slot: dict):
         return {"status": "ok", "schedule": updated_conf.get(day, {})}
     except Exception as e:
         raise HTTPException(500, f"Failed to patch slot: {e}")
-   
-@app.post("/pi/volume/up")
-def pi_volume_up():
+
+@app.get("/player/now-playing")
+def get_now_playing():
     try:
-        # Send command to the Pi (you'll need to determine which Pi based on session/user)
-        # This could be via SSH, HTTP call to Pi's endpoint, or other method
-        # Example: subprocess.run(["ssh", "pi@{pi_ip}", "amixer", "set", "Master", "5%+"])
-        return {"status": "ok"}
+        r = requests.get(f"{FS42_API}/player/status", timeout=2)
+        data = r.json()
+        return {
+            "status": data.get("status"),
+            "channel_number": data.get("channel_number"),
+            "network_name": data.get("network_name"),
+            "current_file": data.get("current_file"),
+        }
     except Exception as e:
-        raise HTTPException(500, f"Pi volume up failed: {e}")
-
-@app.post("/pi/volume/down") 
-def pi_volume_down():
-    # Similar implementation for volume down
-    return {"status": "ok"}
-
-@app.post("/pi/volume/mute")
-def pi_mute():
-    # Similar implementation for mute
-    return {"status": "ok"}
-
-@app.post("/pi/reboot")
-def pi_reboot():
-    try:
-        # Send reboot command to specific Pi
-        # subprocess.run(["ssh", "pi@{pi_ip}", "sudo", "reboot"])
-        return {"status": "ok"}
-    except Exception as e:
-        raise HTTPException(500, f"Pi reboot failed: {e}")
+        raise HTTPException(500, f"Failed to fetch now playing: {e}")
 
 
 if __name__ == "__main__":

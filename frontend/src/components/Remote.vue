@@ -1,138 +1,132 @@
 <template>
-  <div class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
-    <div class="bg-gradient-to-b from-slate-800 to-slate-900 rounded-3xl p-8 w-full max-w-sm shadow-2xl border border-slate-600">
-      <!-- Header with FS42 Branding -->
-      <div class="flex justify-between items-center mb-6">
+  <!-- Box Selection Modal -->
+  <div v-if="!selectedBox" class="fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-50 p-4">
+    <div class="bg-slate-800 rounded-2xl p-4 w-full max-w-xs sm:max-w-sm">
+      <h3 class="text-lg sm:text-xl font-bold text-purple-300 mb-4 text-center">Select Your Cable Box</h3>
+      <div class="space-y-3">
+        <button v-for="box in availableBoxes" :key="box.id"
+                @click="selectBox(box)"
+                :disabled="!box.online"
+                class="w-full p-3 sm:p-4 rounded-lg text-white font-semibold text-sm sm:text-base transition-all"
+                :class="box.online 
+                  ? 'bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-500 hover:to-slate-600'
+                  : 'bg-gray-700 cursor-not-allowed opacity-50'">
+          <div class="flex items-center justify-between">
+            <span>{{ box.name }}</span>
+            <div class="text-xs sm:text-sm" :class="box.online ? 'text-green-400' : 'text-red-400'">
+              {{ box.online ? 'Online' : 'Offline' }}
+            </div>
+          </div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Info Modal -->
+  <div v-if="showInfoModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+    <div class="bg-slate-800 rounded-2xl p-6 max-w-sm w-full text-center relative">
+      <h3 class="text-lg font-bold text-green-300 mb-4">System Info</h3>
+      <p class="text-sm text-slate-300 mb-3">Channel: {{ currentStatus.channel_number || '--' }}</p>
+      <p class="text-sm text-slate-300 mb-3">Network: {{ currentStatus.network_name || 'N/A' }}</p>
+      <p class="text-sm text-yellow-400 mb-3">Now Playing: {{ nowPlaying || 'N/A' }}</p>
+      <button @click="showInfoModal=false"
+              class="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-white font-bold shadow-lg">
+        Close
+      </button>
+    </div>
+  </div>
+
+  <!-- PIN Modal -->
+  <div v-if="showPinModal" class="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-[80]">
+    <div class="bg-slate-800 p-6 rounded-xl w-72 text-center">
+      <h3 class="text-lg text-purple-300 font-bold mb-4">Enter PIN</h3>
+      <input v-model="pinInput" type="password"
+             class="w-full mb-4 px-3 py-2 rounded bg-slate-700 text-white text-center"
+             placeholder="****" maxlength="4" />
+      <div class="flex justify-center gap-3">
+        <button @click="submitPin" class="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg">OK</button>
+        <button @click="showPinModal=false" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Remote -->
+  <div v-else class="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-3">
+    <div class="bg-gradient-to-b from-slate-800 to-slate-900 rounded-2xl w-full max-w-xs sm:max-w-sm mx-auto shadow-2xl border border-slate-600 flex flex-col overflow-hidden">
+      
+      <!-- Header -->
+      <div class="flex justify-between items-center p-3 sm:p-4">
         <div class="text-center w-full">
-          <h3 class="text-xl font-bold text-purple-300">FS42</h3>
-          <p class="text-xs text-slate-400">REMOTE CONTROL</p>
+          <h3 class="text-base sm:text-lg font-bold text-purple-300">FS42</h3>
+          <p class="text-xs text-slate-400">{{ selectedBox.name }}</p>
         </div>
-        <button @click="$emit('close')" class="absolute top-4 right-4 text-slate-400 hover:text-red-400 text-xl">×</button>
+        <button @click="showBoxSelector" class="absolute top-3 left-3 text-slate-400 hover:text-blue-400 text-xs sm:text-sm">SWITCH</button>
+        <button @click="$emit('close')" class="absolute top-3 right-3 text-slate-400 hover:text-red-400 text-lg sm:text-xl">×</button>
       </div>
 
-      <!-- Status Display Screen -->
-      <div class="bg-black rounded-lg p-4 mb-6 border-2 border-slate-700 shadow-inner">
+      <!-- Status -->
+      <div class="mx-3 sm:mx-4 mb-4 bg-black rounded-lg p-3 border-2 border-slate-700 shadow-inner">
         <div class="text-center">
-          <div class="text-2xl font-mono text-green-400 mb-1">
+          <div class="text-lg sm:text-xl font-mono text-green-400 mb-1">
             CH {{ currentStatus.channel_number || '--' }}
           </div>
-          <div class="text-sm text-blue-300 truncate">
+          <div class="text-xs sm:text-sm text-blue-300 truncate">
             {{ currentStatus.network_name || 'NO SIGNAL' }}
           </div>
-          <div class="text-xs text-slate-400 mt-1">
+          <div class="text-[0.65rem] sm:text-xs text-yellow-400 mt-1 truncate">
+            {{ nowPlaying || 'Fetching now playing...' }}
+          </div>
+          <div class="text-[0.65rem] sm:text-xs text-slate-400 mt-1">
             {{ currentStatus.status || 'OFFLINE' }}
           </div>
         </div>
       </div>
 
-      <!-- Power Button -->
-      <div class="flex justify-center mb-6">
-        <button @click="rebootPi" 
-                class="w-16 h-16 rounded-full bg-gradient-to-b from-red-500 to-red-700 hover:from-red-400 hover:to-red-600 text-white shadow-lg border-2 border-red-800 font-bold">
+      <!-- Power -->
+      <div class="flex justify-center mb-4">
+        <button @click="restartPi" class="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-b from-red-500 to-red-700 hover:from-red-400 hover:to-red-600 text-white shadow-lg border-2 border-red-800 font-bold text-sm">
           PWR
         </button>
       </div>
 
-      <!-- Volume and Channel Controls -->
-      <div class="grid grid-cols-3 gap-4 mb-6">
-        <div class="flex flex-col gap-2">
-          <button @click="volumeUp" 
-                  class="py-3 bg-gradient-to-b from-blue-600 to-blue-800 hover:from-blue-500 hover:to-blue-700 text-white rounded-lg border border-blue-500 font-semibold">
-            VOL+
-          </button>
-          <button @click="volumeDown" 
-                  class="py-3 bg-gradient-to-b from-blue-600 to-blue-800 hover:from-blue-500 hover:to-blue-700 text-white rounded-lg border border-blue-500 font-semibold">
-            VOL-
-          </button>
+      <!-- Volume + Channel -->
+      <div class="grid grid-cols-3 gap-3 mb-4 px-4 text-xs sm:text-sm">
+        <div class="flex flex-col gap-3">
+          <button @click="volumeUp" class="py-3 bg-blue-700 hover:bg-blue-600 text-white rounded-lg border border-blue-500 font-semibold">VOL+</button>
+          <button @click="volumeDown" class="py-3 bg-blue-700 hover:bg-blue-600 text-white rounded-lg border border-blue-500 font-semibold">VOL-</button>
         </div>
-        
         <div class="flex flex-col justify-center items-center">
-          <button @click="mute" 
-                  class="w-16 h-16 rounded-full bg-gradient-to-b from-slate-600 to-slate-800 hover:from-slate-500 hover:to-slate-700 text-white border-2 border-slate-500 text-sm font-bold">
-            MUTE
-          </button>
+          <button @click="mute" class="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-slate-700 hover:bg-slate-600 text-white border-2 border-slate-500 text-sm font-bold">MUTE</button>
         </div>
-        
-        <div class="flex flex-col gap-2">
-          <button @click="channelUp" 
-                  class="py-3 bg-gradient-to-b from-purple-600 to-purple-800 hover:from-purple-500 hover:to-purple-700 text-white rounded-lg border border-purple-500 font-semibold">
-            CH+
-          </button>
-          <button @click="channelDown" 
-                  class="py-3 bg-gradient-to-b from-purple-600 to-purple-800 hover:from-purple-500 hover:to-purple-700 text-white rounded-lg border border-purple-500 font-semibold">
-            CH-
-          </button>
+        <div class="flex flex-col gap-3">
+          <button @click="channelUp" class="py-3 bg-purple-700 hover:bg-purple-600 text-white rounded-lg border border-purple-500 font-semibold">CH+</button>
+          <button @click="channelDown" class="py-3 bg-purple-700 hover:bg-purple-600 text-white rounded-lg border border-purple-500 font-semibold">CH-</button>
         </div>
       </div>
 
-      <!-- Number Pad -->
-      <div class="grid grid-cols-3 gap-3 mb-6">
-        <button v-for="num in [1,2,3,4,5,6,7,8,9]" 
-                :key="num"
-                @click="inputDigit(num)" 
-                class="h-12 bg-gradient-to-b from-slate-600 to-slate-800 hover:from-slate-500 hover:to-slate-700 text-white rounded-lg border border-slate-500 font-bold text-lg shadow-lg">
+      <!-- PIN Pad -->
+      <div class="grid grid-cols-3 gap-3 mb-4 px-4 text-lg sm:text-xl">
+        <button v-for="num in [1,2,3,4,5,6,7,8,9]" :key="num" @click="inputDigit(num)"
+                class="h-12 sm:h-14 bg-slate-700 hover:bg-slate-600 text-white rounded-lg border border-slate-500 font-bold shadow-lg">
           {{ num }}
         </button>
       </div>
-
-      <!-- Bottom Number Row -->
-      <div class="grid grid-cols-3 gap-3 mb-6">
-        <button @click="inputFunction('*')" 
-                class="h-12 bg-gradient-to-b from-yellow-600 to-yellow-800 hover:from-yellow-500 hover:to-yellow-700 text-white rounded-lg border border-yellow-500 font-bold text-lg shadow-lg">
-          *
-        </button>
-        <button @click="inputDigit(0)" 
-                class="h-12 bg-gradient-to-b from-slate-600 to-slate-800 hover:from-slate-500 hover:to-slate-700 text-white rounded-lg border border-slate-500 font-bold text-lg shadow-lg">
-          0
-        </button>
-        <button @click="inputFunction('#')" 
-                class="h-12 bg-gradient-to-b from-yellow-600 to-yellow-800 hover:from-yellow-500 hover:to-yellow-700 text-white rounded-lg border border-yellow-500 font-bold text-lg shadow-lg">
-          #
-        </button>
-      </div>
-
-      <!-- Channel Input Display -->
-      <div v-if="channelInput" class="text-center mb-4 p-2 bg-blue-900 rounded-lg border border-blue-700">
-        <div class="text-blue-200 text-sm">ENTERING CHANNEL</div>
-        <div class="text-white text-xl font-mono">{{ channelInput }}</div>
+      <div class="grid grid-cols-3 gap-3 mb-4 px-4 text-lg sm:text-xl">
+        <button @click="inputFunction('*')" class="h-12 sm:h-14 bg-yellow-700 hover:bg-yellow-600 text-white rounded-lg border border-yellow-500 font-bold">*</button>
+        <button @click="inputDigit(0)" class="h-12 sm:h-14 bg-slate-700 hover:bg-slate-600 text-white rounded-lg border border-slate-500 font-bold">0</button>
+        <button @click="inputFunction('#')" class="h-12 sm:h-14 bg-yellow-700 hover:bg-yellow-600 text-white rounded-lg border border-yellow-500 font-bold">#</button>
       </div>
 
       <!-- Function Buttons -->
-      <div class="grid grid-cols-2 gap-3 mb-6">
-        <button @click="showGuide" 
-                class="py-3 bg-gradient-to-b from-indigo-600 to-indigo-800 hover:from-indigo-500 hover:to-indigo-700 text-white rounded-lg border border-indigo-500 font-semibold">
-          GUIDE
-        </button>
-        <button @click="toggleInfo" 
-                class="py-3 bg-gradient-to-b from-green-600 to-green-800 hover:from-green-500 hover:to-green-700 text-white rounded-lg border border-green-500 font-semibold">
-          INFO
-        </button>
+      <div class="grid grid-cols-3 gap-3 mb-4 px-4">
+        <button @click="showGuide" class="py-3 bg-indigo-700 hover:bg-indigo-600 text-white rounded-lg border border-indigo-500 font-semibold text-xs sm:text-sm">GUIDE</button>
+        <button @click="showInfoModal=true" class="py-3 bg-green-700 hover:bg-green-600 text-white rounded-lg border border-green-500 font-semibold text-xs sm:text-sm">INFO</button>
+        <button @click="showPinModal=true" class="py-3 bg-orange-700 hover:bg-orange-600 text-white rounded-lg border border-orange-500 font-semibold text-xs sm:text-sm">REFRESH</button>
       </div>
 
-      <!-- Error Display -->
-      <div v-if="errorMsg" class="mt-4 p-3 bg-red-900 border border-red-700 rounded-lg">
-        <div class="text-red-200 text-center text-sm">
-          {{ errorMsg }}
-        </div>
-      </div>
-
-      <!-- Remote Model Info -->
-      <div class="text-center mt-6 text-xs text-slate-500">
+      <!-- Footer -->
+      <div class="text-center pb-4 text-[0.65rem] sm:text-xs text-slate-500">
         Model: FS42-RC-2025
-      </div>
-
-      <!-- Info Overlay - Takes up half the screen as test -->
-      <div v-if="showInfoOverlay" 
-           class="fixed top-1/4 left-1/4 w-1/2 h-1/2 bg-black bg-opacity-95 flex items-center justify-center z-[60] border-2 border-purple-500 rounded-lg">
-        <div class="text-center text-white p-8">
-          <h3 class="text-2xl font-bold mb-4">INFO OVERLAY TEST</h3>
-          <p class="text-lg mb-4">Half-screen black box</p>
-          <p class="text-sm text-gray-400">IMDB integration coming soon...</p>
-          <button @click="showInfoOverlay = false" 
-                  class="mt-6 px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg">
-            CLOSE
-          </button>
-        </div>
       </div>
     </div>
   </div>
@@ -145,21 +139,71 @@ import axios from 'axios'
 const API = import.meta.env.VITE_API_URL
 
 const currentStatus = ref({})
-const errorMsg = ref('')
+const nowPlaying = ref('')
 const channelInput = ref('')
 const inputTimer = ref(null)
-const showInfoOverlay = ref(false)
+const selectedBox = ref(null)
 
-// Channel input handling
-const inputDigit = (digit) => {
-  channelInput.value += digit.toString()
-  
-  // Clear existing timer
-  if (inputTimer.value) {
-    clearTimeout(inputTimer.value)
+const showInfoModal = ref(false)
+const showPinModal = ref(false)
+const pinInput = ref('')
+const correctPin = '1234'
+
+const availableBoxes = ref([
+  { id: 'cable',  name: 'Cable Box',   ip: '100.117.143.10', online: false },
+  { id: 'cable1', name: 'Cable Box 1', ip: '100.81.14.111',  online: false },
+  { id: 'cable2', name: 'Cable Box 2', ip: '100.92.235.10',  online: false },
+])
+
+// Status
+const fetchCurrentStatus = async () => {
+  try {
+    const r = await axios.get(`${API}/player/status`)
+    currentStatus.value = r.data
+    nowPlaying.value = r.data?.title || ''
+  } catch {
+    currentStatus.value = {}
+    nowPlaying.value = ''
   }
-  
-  // Set new timer to tune after 1.5 seconds of no input
+}
+
+// Submit PIN for refresh
+const submitPin = async () => {
+  if (pinInput.value === correctPin) {
+    showPinModal.value = false
+    pinInput.value = ''
+    if (selectedBox.value) {
+      await axios.post(`${API}/pi/${selectedBox.value.id}/reboot`).catch(() => {})
+    }
+    await axios.post(`${API}/hot-start`).catch(() => {})
+    currentStatus.value = { status: 'REFRESHING' }
+  } else {
+    pinInput.value = ''
+    alert('Incorrect PIN')
+  }
+}
+
+// Pi only
+const restartPi = async () => {
+  if (!selectedBox.value) return
+  await axios.post(`${API}/pi/${selectedBox.value.id}/reboot`).catch(() => {})
+  currentStatus.value = { status: 'RESTARTING' }
+}
+
+// Channels
+const tuneToChannel = (ch) => axios.post(`${API}/player/channels/${ch}`).then(fetchCurrentStatus)
+const channelUp = () => axios.post(`${API}/player/channels/up`).then(fetchCurrentStatus)
+const channelDown = () => axios.post(`${API}/player/channels/down`).then(fetchCurrentStatus)
+
+// Volume
+const volumeUp = () => axios.post(`${API}/pi/${selectedBox.value.id}/volume/up`).catch(() => {})
+const volumeDown = () => axios.post(`${API}/pi/${selectedBox.value.id}/volume/down`).catch(() => {})
+const mute = () => axios.post(`${API}/pi/${selectedBox.value.id}/volume/mute`).catch(() => {})
+
+// Input
+const inputDigit = (d) => {
+  channelInput.value += d.toString()
+  if (inputTimer.value) clearTimeout(inputTimer.value)
   inputTimer.value = setTimeout(() => {
     if (channelInput.value) {
       tuneToChannel(parseInt(channelInput.value))
@@ -167,157 +211,31 @@ const inputDigit = (digit) => {
     }
   }, 1500)
 }
-
-const inputFunction = (func) => {
-  if (func === '*') {
-    // Star - clear input
+const inputFunction = (f) => {
+  if (f === '*') channelInput.value = ''
+  if (f === '#' && channelInput.value) {
+    tuneToChannel(parseInt(channelInput.value))
     channelInput.value = ''
-    if (inputTimer.value) {
-      clearTimeout(inputTimer.value)
-    }
-  } else if (func === '#') {
-    // Pound - confirm channel input immediately
-    if (channelInput.value) {
-      tuneToChannel(parseInt(channelInput.value))
-      channelInput.value = ''
-      if (inputTimer.value) {
-        clearTimeout(inputTimer.value)
-      }
-    }
   }
 }
 
-// API calls using your existing backend endpoints
-const fetchCurrentStatus = async () => {
-  try {
-    const response = await axios.get(`${API}/player/channels/current`)
-    currentStatus.value = response.data
-    errorMsg.value = ''
-  } catch (error) {
-    errorMsg.value = 'FAILED TO GET STATUS'
-    console.error('Status fetch error:', error)
-  }
-}
-
-const tuneToChannel = async (channel) => {
-  try {
-    await axios.post(`${API}/player/channels/${channel}`)
-    await fetchCurrentStatus()
-    errorMsg.value = ''
-  } catch (error) {
-    errorMsg.value = `TUNE FAILED: CH ${channel}`
-    console.error('Tune error:', error)
-  }
-}
-
-const channelUp = async () => {
-  try {
-    await axios.post(`${API}/player/channels/up`)
-    await fetchCurrentStatus()
-    errorMsg.value = ''
-  } catch (error) {
-    errorMsg.value = 'CHANNEL UP FAILED'
-    console.error('Channel up error:', error)
-  }
-}
-
-const channelDown = async () => {
-  try {
-    await axios.post(`${API}/player/channels/down`)
-    await fetchCurrentStatus()
-    errorMsg.value = ''
-  } catch (error) {
-    errorMsg.value = 'CHANNEL DOWN FAILED'
-    console.error('Channel down error:', error)
-  }
-}
-
-// Volume controls - send to Pi machine
-const volumeUp = async () => {
-  try {
-    await axios.post(`${API}/pi/volume/up`)
-    errorMsg.value = ''
-  } catch (error) {
-    errorMsg.value = 'VOLUME CONTROL FAILED'
-    console.error('Volume up error:', error)
-  }
-}
-
-const volumeDown = async () => {
-  try {
-    await axios.post(`${API}/pi/volume/down`)
-    errorMsg.value = ''
-  } catch (error) {
-    errorMsg.value = 'VOLUME CONTROL FAILED'
-    console.error('Volume down error:', error)
-  }
-}
-
-const mute = async () => {
-  try {
-    await axios.post(`${API}/pi/volume/mute`)
-    errorMsg.value = ''
-  } catch (error) {
-    errorMsg.value = 'MUTE FAILED'
-    console.error('Mute error:', error)
-  }
-}
-
-// Guide function - tune to channel 3
-const showGuide = async () => {
-  try {
-    await axios.post(`${API}/player/channels/3`)
-    await fetchCurrentStatus()
-    errorMsg.value = ''
-  } catch (error) {
-    errorMsg.value = 'GUIDE UNAVAILABLE'
-    console.error('Guide error:', error)
-  }
-}
-
-// Info overlay toggle
-const toggleInfo = async () => {
-  showInfoOverlay.value = !showInfoOverlay.value
-  
-  // Auto-hide after 5 seconds
-  if (showInfoOverlay.value) {
-    setTimeout(() => {
-      showInfoOverlay.value = false
-    }, 5000)
-  }
-}
-
-// Power button - reboot the Pi
-const rebootPi = async () => {
-  if (!confirm('Are you sure you want to reboot this Pi?')) return
-  
-  try {
-    await axios.post(`${API}/pi/reboot`)
-    currentStatus.value = { status: 'REBOOTING PI', network_name: '', channel_number: null }
-    errorMsg.value = 'PI REBOOTING...'
-  } catch (error) {
-    errorMsg.value = 'PI REBOOT FAILED'
-    console.error('Reboot error:', error)
-  }
-}
-
-// Status polling
+// Lifecycle
 let statusInterval = null
-
 onMounted(() => {
+  const saved = localStorage.getItem('selectedCableBox')
+  if (saved) selectedBox.value = JSON.parse(saved)
   fetchCurrentStatus()
-  // Poll status every 3 seconds
   statusInterval = setInterval(fetchCurrentStatus, 3000)
 })
-
 onUnmounted(() => {
-  if (statusInterval) {
-    clearInterval(statusInterval)
-  }
-  if (inputTimer.value) {
-    clearTimeout(inputTimer.value)
-  }
+  if (statusInterval) clearInterval(statusInterval)
+  if (inputTimer.value) clearTimeout(inputTimer.value)
 })
-
-defineEmits(['close'])
 </script>
+
+<style>
+input, button {
+  font-size: 16px !important;
+  touch-action: manipulation;
+}
+</style>
