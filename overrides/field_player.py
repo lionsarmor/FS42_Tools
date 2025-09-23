@@ -1,0 +1,270 @@
+import multiprocessing
+from queue import Empty
+import argparse
+import time
+import datetime
+import json
+import signal
+import logging
+
+from fs42.liquid_manager import LiquidManager
+from fs42.station_manager import StationManager
+from fs42.timings import MIN_1, DAYS
+from fs42.station_player import (
+    StationPlayer,
+    PlayerState,
+    PlayerOutcome,
+    update_status_socket,
+)
+from fs42.reception import (
+    ReceptionStatus,
+    long_change_effect,
+    short_change_effect,
+    none_change_effect,
+)
+
+logging.basicConfig(
+    format="%(asctime)s %(levelname)s:%(name)s:%(message)s", level=logging.INFO
+)
+
+try:
+    from fs42.overlay.ticker import run_ticker
+except ModuleNotFoundError:
+    logging.getLogger("FieldPlayer").warning(
+        "Error importing ticker - using the ticker will cause an error."
+    )
+
+api_commands_queue: multiprocessing.Queue = None
+
+
+def input_check():
+    if api_commands_queue:
+        q_message = None
+        try:
+            q_message = api_commands_queue.get(block=False)
+        except Empty:
+            pass
+
+        if q_message:
+            command = q_message.get("command", None)
+            if not command:
+                return
+            match command:
+                case "exit":
+                    return PlayerOutcome(PlayerState.EXIT_COMMAND)
+                case "reload_data":
+                    LiquidManager().reload_schedules()
+                case "guide":
+                    c_number = StationManager().guide_config["channel_number"]
+                    change_request = {"command": "direct", "channel": c_number}
+                    return PlayerOutcome(
+                        PlayerState.CHANNEL_CHANGE, json.dumps(change_request)
+                    )
+                case "ticker":
+                    message = q_message.get("message", None)
+                    header = q_message.get("header", None)
+                    style = q_message.get("style", None)
+                    iterations = q_message.get("iterations", None)
+                    run_ticker(message, header, style, iterations)
+
+    channel_socket = StationManager().server_conf["channel_socket"]
+    with open(channel_socket, "r") as r_sock:
+        contents = r_sock.read()
+    if len(contents):
+        with open(channel_socket, "w"):
+            pass
+        return PlayerOutcome(PlayerState.CHANNEL_CHANGE, contents)
+    return None
+
+
+def main_loop(transition_fn, shutdown_queue=None, api_proc=None):
+    manager = StationManager()
+    reception = ReceptionStatus()
+    logger = logging.getLogger("MainLoop")
+    logger.info("Starting main loop")
+
+    channel_socket = StationManager().server_conf["channel_socket"]
+
+    # clear the channel socket
+    with open(channel_socket, "w"):
+        pass
+
+    channel_index = 0
+    if not len(manager.stations):
+        logger.error("Could not find any station runtimes - do you have channels configured?")
+        return
+
+    player = StationPlayer(manager.stations[channel_index], input_check)
+    reception.degrade()
+    player.update_filters()
+
+    def sigint_handler(sig, frame):
+        logger.critical("Received SIGINT, attempting to exit gracefully...")
+        player.shutdown()
+        update_status_socket("stopped", "", -1)
+        if shutdown_queue is not None:
+            shutdown_queue.put("shutdown")
+        if api_proc is not None:
+            api_proc.join(timeout=5)
+        logger.info("Shutdown completed")
+        exit(0)
+
+    signal.signal(signal.SIGINT, sigint_handler)
+
+    channel_conf = manager.stations[channel_index]
+    player_state = None
+    skip_play = False
+    stuck_timer = 0
+
+    while True:
+        logger.info(f"Playing station: {channel_conf['network_name']}")
+
+        if channel_conf["network_type"] == "guide" and not skip_play:
+            player_state = player.show_guide(channel_conf)
+        elif channel_conf["network_type"] == "web" and not skip_play:
+            player_state = player.show_web(channel_conf)
+        elif not skip_play:
+            now = datetime.datetime.now()
+            week_day = DAYS[now.weekday()]
+            hour = now.hour
+            skip = now.minute * MIN_1 + now.second
+
+            logger.info(
+                f"Starting station {channel_conf['network_name']} at {week_day} {hour} skipping={skip}"
+            )
+
+            player_state = player.play_slot(
+                channel_conf["network_name"], datetime.datetime.now()
+            )
+
+        skip_play = False
+
+        if player_state.status == PlayerState.CHANNEL_CHANGE:
+            stuck_timer = 0
+            station_cache = manager.stations
+            stations_len = len(station_cache)
+            tune_up = True
+
+            if player_state.payload:
+                try:
+                    as_obj = json.loads(player_state.payload)
+                    if "command" in as_obj:
+                        if as_obj["command"] == "direct":
+                            tune_up = False
+                            if "channel" in as_obj:
+                                new_index = manager.index_from_channel(as_obj["channel"])
+                                if new_index is not None:
+                                    channel_index = new_index
+                        elif as_obj["command"] == "up":
+                            tune_up = True
+                        elif as_obj["command"] == "down":
+                            tune_up = False
+                            found = False
+                            while not found:
+                                channel_index -= 1
+                                if channel_index < 0:
+                                    channel_index = stations_len - 1
+                                if not station_cache[channel_index]["hidden"]:
+                                    found = True
+                except Exception as e:
+                    logger.exception(e)
+
+            if tune_up:
+                found = False
+                while not found:
+                    channel_index += 1
+                    channel_index = channel_index if channel_index < stations_len else 0
+                    found = not station_cache[channel_index]["hidden"]
+
+            # 🔥 stop old player before switching
+            player.shutdown()
+
+            # create new player for new channel
+            channel_conf = station_cache[channel_index]
+            player = StationPlayer(channel_conf, input_check)
+
+            transition_fn(player, reception)
+
+        elif player_state.status == PlayerState.FAILED:
+            stuck_timer += 1
+            if stuck_timer >= 2 and "standby_image" in channel_conf:
+                player.play_file(channel_conf["standby_image"])
+            update_status_socket(
+                "stuck",
+                channel_conf["network_name"],
+                channel_conf["channel_number"],
+                player.get_current_path(),
+            )
+            time.sleep(1)
+            new_state = input_check()
+            if new_state is not None:
+                player_state = new_state
+                skip_play = True
+        elif player_state.status == PlayerState.SUCCESS:
+            stuck_timer = 0
+        elif player_state.status == PlayerState.EXIT_COMMAND:
+            sigint_handler(None, None)
+        else:
+            stuck_timer = 0
+
+
+def start_api_server_with_shutdown_queue(shutdown_queue, command_q):
+    from fs42.fs42_server import fs42_server
+    fs42_server.run_with_shutdown_queue(shutdown_queue, command_q)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="FieldStation42 Player")
+    parser.add_argument(
+        "-t", "--transition", choices=["long", "short", "none"],
+        help="Transition effect to use on channel change"
+    )
+    parser.add_argument(
+        "-l", "--logfile",
+        help="Set logging to use output file - will append each run"
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Set logging verbosity level to very chatty"
+    )
+    parser.add_argument(
+        "--no_server", action="store_true",
+        help="Do not start the web API server process."
+    )
+    args = parser.parse_args()
+
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    if args.logfile:
+        fh = logging.FileHandler(args.logfile)
+        fh.setFormatter(logging.Formatter("%(asctime)s:%(levelname)s:%(name)s:%(message)s"))
+        logging.getLogger().addHandler(fh)
+
+    trans_fn = short_change_effect
+    if args.transition == "long":
+        trans_fn = long_change_effect
+    elif args.transition == "none":
+        trans_fn = none_change_effect
+
+    if not args.no_server:
+        shutdown_queue = multiprocessing.Queue()
+        api_commands_queue = multiprocessing.Queue()
+        api_proc = multiprocessing.Process(
+            target=start_api_server_with_shutdown_queue,
+            args=(shutdown_queue, api_commands_queue),
+            daemon=True,
+        )
+        api_proc.start()
+    else:
+        shutdown_queue = None
+        api_commands_queue = None
+        api_proc = None
+
+    try:
+        main_loop(trans_fn, shutdown_queue=shutdown_queue, api_proc=api_proc)
+    finally:
+        if shutdown_queue is not None:
+            shutdown_queue.put("shutdown")
+        if api_proc is not None:
+            api_proc.join(timeout=5)
